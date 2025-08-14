@@ -25,6 +25,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<ITcpDeviceService, TcpDeviceService>();
 		builder.Services.AddSingleton<ByteSnapTcpClient>();
 		builder.Services.AddSingleton<IDeviceDiscoveryService, DeviceDiscoveryService>();
+		builder.Services.AddSingleton<IMessagingService, MessagingService>();
+		builder.Services.AddSingleton<INavigationService, NavigationService>();
 		
 		// Register ViewModels - Transient (new instance each time)
 		builder.Services.AddTransient<MainViewModel>();

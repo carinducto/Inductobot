@@ -192,6 +192,11 @@ public class ByteSnapTcpClient : IDisposable
         return await SendCommandAsync<CodedResponse>("/sleep", HttpMethod.Post, null, cancellationToken);
     }
     
+    public async Task<ApiResponse<CodedResponse>> RestartWifiAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendCommandAsync<CodedResponse>("/wifi/restart", HttpMethod.Post, null, cancellationToken);
+    }
+    
     public async Task<byte[]> SendSerialDataAsync(byte[] serialData, CancellationToken cancellationToken = default)
     {
         if (!IsConnected || _stream == null)

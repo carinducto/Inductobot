@@ -378,8 +378,18 @@ public partial class MainPage : ContentPage
         try
         {
             StatusLabel.Text = "Restarting WiFi...";
-            StatusLabel.Text = "WiFi restart not implemented";
-            await DisplayAlert("Info", "WiFi restart functionality needs to be implemented in the device API", "OK");
+            var response = await _tcpClient.RestartWifiAsync();
+            
+            if (response.IsSuccess)
+            {
+                StatusLabel.Text = "WiFi restart successful";
+                await DisplayAlert("Success", "WiFi restart command sent successfully. Device may temporarily disconnect.", "OK");
+            }
+            else
+            {
+                StatusLabel.Text = $"WiFi restart failed: {response.Message}";
+                await DisplayAlert("Error", $"WiFi restart failed: {response.Message}", "OK");
+            }
         }
         catch (Exception ex)
         {
