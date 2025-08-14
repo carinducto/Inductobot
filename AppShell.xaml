@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="Inductobot.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:local="clr-namespace:Inductobot"
+    xmlns:views="clr-namespace:Inductobot.Views"
+    Title="Inductobot">
+
+    <TabBar>
+        <ShellContent
+            Title="Device Connection"
+            Icon="dotnet_bot.png"
+            ContentTemplate="{DataTemplate views:DeviceConnectionPage}"
+            Route="DeviceConnection" />
+            
+        <ShellContent
+            Title="Device Control"
+            Icon="dotnet_bot.png"
+            ContentTemplate="{DataTemplate local:MainPage}"
+            Route="DeviceControl" />
+    </TabBar>
+
+</Shell>

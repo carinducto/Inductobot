@@ -1,0 +1,188 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Inductobot.MainPage"
+             Title="Device Control">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="20">
+        
+        <!-- Header Section -->
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+            <Label Text="Device Control Dashboard" 
+                   FontSize="32" 
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"/>
+            
+            <Frame BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+                   BorderColor="Transparent"
+                   Padding="15"
+                   Margin="0,10">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
+                    <Ellipse Grid.Column="0"
+                           WidthRequest="16"
+                           HeightRequest="16"
+                           VerticalOptions="Center">
+                        <Ellipse.Fill>
+                            <SolidColorBrush Color="Red"/>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    
+                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                        <Label x:Name="ConnectionStatusLabel" 
+                             Text="Not Connected" 
+                             FontSize="16" 
+                             FontAttributes="Bold"/>
+                        <Label x:Name="DeviceInfoLabel" 
+                             Text="No device selected" 
+                             FontSize="12" 
+                             TextColor="Gray"/>
+                    </VerticalStackLayout>
+                    
+                    <Button Text="Disconnect" 
+                          x:Name="DisconnectButton"
+                          Clicked="OnDisconnectClicked"
+                          IsVisible="False"
+                          Grid.Column="2"/>
+                </Grid>
+            </Frame>
+        </VerticalStackLayout>
+        
+        <!-- Control Panels -->
+        <ScrollView Grid.Row="1" Margin="0,10">
+            <VerticalStackLayout Spacing="20">
+                
+                <!-- Device Information Panel -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Device Information" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="20" RowSpacing="10">
+                            <Button Text="Get Device Info" 
+                                  Clicked="OnGetDeviceInfoClicked"
+                                  Grid.Column="0" Grid.Row="0"/>
+                            
+                            <Button Text="Keep Alive" 
+                                  Clicked="OnKeepAliveClicked"
+                                  Grid.Column="1" Grid.Row="0"/>
+                            
+                            <Button Text="Get WiFi Settings" 
+                                  Clicked="OnGetWifiSettingsClicked"
+                                  Grid.Column="0" Grid.Row="1"/>
+                            
+                            <Button Text="Sleep Device" 
+                                  Clicked="OnSleepDeviceClicked"
+                                  Grid.Column="1" Grid.Row="1"/>
+                        </Grid>
+                        
+                        <Label x:Name="DeviceInfoText" 
+                             FontFamily="Monospace" 
+                             FontSize="12" 
+                             TextColor="Gray" 
+                             Text="Device information will appear here..."/>
+                    </VerticalStackLayout>
+                </Frame>
+                
+                <!-- Measurement Panel -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Measurements &amp; Scanning" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="10">
+                            <Button Text="Start Scan" 
+                                  Clicked="OnStartScanClicked"
+                                  Grid.Column="0" Grid.Row="0"/>
+                            
+                            <Button Text="Stop Scan" 
+                                  Clicked="OnStopScanClicked"
+                                  Grid.Column="1" Grid.Row="0"/>
+                            
+                            <Button Text="Get Measurement" 
+                                  Clicked="OnGetMeasurementClicked"
+                                  Grid.Column="0" Grid.Row="1"/>
+                            
+                            <Button Text="Get Live Reading" 
+                                  Clicked="OnGetLiveReadingClicked"
+                                  Grid.Column="1" Grid.Row="1"/>
+                        </Grid>
+                        
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="Live Reading Parameters:" FontSize="14" FontAttributes="Bold"/>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <Entry x:Name="StartIndexEntry" 
+                                     Placeholder="Start Index" 
+                                     Text="0" 
+                                     Keyboard="Numeric"
+                                     Grid.Column="0"/>
+                                <Entry x:Name="NumPointsEntry" 
+                                     Placeholder="Num Points" 
+                                     Text="100" 
+                                     Keyboard="Numeric"
+                                     Grid.Column="1"/>
+                            </Grid>
+                        </VerticalStackLayout>
+                        
+                        <ScrollView HeightRequest="150">
+                            <Label x:Name="MeasurementText" 
+                                 FontFamily="Monospace" 
+                                 FontSize="12" 
+                                 TextColor="Gray" 
+                                 Text="Measurement data will appear here..."/>
+                        </ScrollView>
+                    </VerticalStackLayout>
+                </Frame>
+                
+                <!-- WiFi Configuration Panel -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="WiFi Configuration" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <Entry x:Name="SsidEntry" 
+                                 Placeholder="SSID" 
+                                 Grid.Column="0" Grid.Row="0"/>
+                            
+                            <Entry x:Name="PasswordEntry" 
+                                 Placeholder="Password" 
+                                 IsPassword="True"
+                                 Grid.Column="1" Grid.Row="0"/>
+                            
+                            <Button Text="Set WiFi Settings" 
+                                  Clicked="OnSetWifiSettingsClicked"
+                                  Grid.Column="0" Grid.Row="1"/>
+                            
+                            <Button Text="Restart WiFi" 
+                                  Clicked="OnRestartWifiClicked"
+                                  Grid.Column="1" Grid.Row="1"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+                
+            </VerticalStackLayout>
+        </ScrollView>
+        
+        <!-- Status Bar -->
+        <Frame Grid.Row="2" 
+               BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#1A1A1A}"
+               BorderColor="Transparent"
+               Padding="10,5">
+            <Label x:Name="StatusLabel" 
+                 Text="Ready" 
+                 FontSize="12"
+                 VerticalOptions="Center"
+                 HorizontalOptions="Center"/>
+        </Frame>
+    </Grid>
+
+</ContentPage>
