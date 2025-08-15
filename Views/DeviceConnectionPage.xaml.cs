@@ -12,6 +12,8 @@ public partial class DeviceConnectionPage : ContentPage
     private readonly ByteSnapTcpClient _tcpClient;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
+    private CancellationTokenSource? _connectionCts;
+    private CancellationTokenSource? _scanCts;
     
     public DeviceConnectionPage(
         IDeviceDiscoveryService discoveryService,
@@ -44,10 +46,21 @@ public partial class DeviceConnectionPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        
+        // Cancel any ongoing operations
+        _connectionCts?.Cancel();
+        _scanCts?.Cancel();
+        _discoveryService.StopScan();
+        
+        // Unsubscribe from events
         _discoveryService.DeviceDiscovered -= OnDeviceDiscovered;
         _discoveryService.DeviceRemoved -= OnDeviceRemoved;
         _discoveryService.ScanningStateChanged -= OnScanningStateChanged;
         _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
+        
+        // Dispose cancellation tokens
+        _connectionCts?.Dispose();
+        _scanCts?.Dispose();
     }
     
     private async void OnScanNetworkClicked(object sender, EventArgs e)
@@ -55,11 +68,62 @@ public partial class DeviceConnectionPage : ContentPage
         if (_discoveryService.IsScanning)
         {
             _discoveryService.StopScan();
+            _scanCts?.Cancel();
         }
         else
         {
-            _devices.Clear();
-            await _discoveryService.StartScanAsync();
+            // Cancel any existing scan
+            _scanCts?.Cancel();
+            _scanCts = new CancellationTokenSource();
+            
+            try
+            {
+                _devices.Clear();
+                
+                // Start scan with user cancellation support
+                var scanTask = _discoveryService.StartScanAsync(_scanCts.Token);
+                
+                // Create a timeout for very long scans
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(2), _scanCts.Token);
+                
+                var completedTask = await Task.WhenAny(scanTask, timeoutTask);
+                
+                if (completedTask == timeoutTask)
+                {
+                    var userChoice = await DisplayAlert("Scan Taking Long", 
+                        "Network scan is taking longer than expected. Continue scanning?", 
+                        "Keep Scanning", "Stop");
+                    
+                    if (!userChoice)
+                    {
+                        _discoveryService.StopScan();
+                        _scanCts.Cancel();
+                    }
+                    else
+                    {
+                        // Wait for scan to complete
+                        await scanTask;
+                    }
+                }
+                else
+                {
+                    await scanTask;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Network scan cancelled by user");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during network scan");
+                await DisplayAlert("Scan Error", $"Network scan failed: {ex.Message}", "OK");
+            }
+            finally
+            {
+                _scanCts?.Dispose();
+                _scanCts = null;
+            }
         }
     }
     
@@ -110,15 +174,45 @@ public partial class DeviceConnectionPage : ContentPage
     
     private async Task ConnectToDeviceAsync(string ipAddress, int port)
     {
+        // Cancel any existing connection attempt
+        _connectionCts?.Cancel();
+        _connectionCts = new CancellationTokenSource();
+        
         try
         {
             StatusLabel.Text = "Connecting...";
             ConnectionInfoLabel.Text = $"{ipAddress}:{port}";
             
-            var connected = await _tcpClient.ConnectAsync(ipAddress, port);
+            // Show a cancellable progress dialog
+            var connectTask = _tcpClient.ConnectAsync(ipAddress, port, _connectionCts.Token);
+            
+            // Create timeout with user option to cancel
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(15), _connectionCts.Token);
+            
+            var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+            
+            if (completedTask == timeoutTask)
+            {
+                var userChoice = await DisplayAlert("Connection Timeout", 
+                    $"Connection to {ipAddress}:{port} is taking longer than expected. Continue waiting?", 
+                    "Keep Trying", "Cancel");
+                
+                if (!userChoice)
+                {
+                    _connectionCts.Cancel();
+                    StatusLabel.Text = "Connection cancelled";
+                    return;
+                }
+                
+                // Wait for connection to complete if user chose to continue
+                await connectTask;
+            }
+            
+            var connected = await connectTask;
             
             if (connected)
             {
+                StatusLabel.Text = "Connected";
                 await DisplayAlert("Success", $"Connected to device at {ipAddress}:{port}", "OK");
                 
                 // Navigate to device control page
@@ -126,13 +220,25 @@ public partial class DeviceConnectionPage : ContentPage
             }
             else
             {
+                StatusLabel.Text = "Connection failed";
                 await DisplayAlert("Error", $"Failed to connect to device at {ipAddress}:{port}", "OK");
             }
         }
+        catch (OperationCanceledException)
+        {
+            StatusLabel.Text = "Connection cancelled";
+            _logger.LogInformation("Connection cancelled by user");
+        }
         catch (Exception ex)
         {
+            StatusLabel.Text = "Connection error";
             _logger.LogError(ex, "Error connecting to device");
             await DisplayAlert("Error", $"Connection error: {ex.Message}", "OK");
+        }
+        finally
+        {
+            _connectionCts?.Dispose();
+            _connectionCts = null;
         }
     }
     
@@ -155,7 +261,7 @@ public partial class DeviceConnectionPage : ContentPage
     
     private async void OnDeviceTapped(object sender, TappedEventArgs e)
     {
-        if (sender is Frame frame && frame.BindingContext is UASDeviceInfo device)
+        if (sender is Border border && border.BindingContext is UASDeviceInfo device)
         {
             var action = await DisplayActionSheet($"{device.Name}", "Cancel", null, "Connect", "Test Connection", "Refresh", "Remove");
             

@@ -41,49 +41,87 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
     
     public async Task<bool> ConnectAsync(UASDeviceInfo device, CancellationToken cancellationToken = default)
     {
-        try
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            if (IsConnected)
+            try
             {
-                await DisconnectAsync();
+                if (IsConnected)
+                {
+                    await DisconnectAsync();
+                }
+                
+                UpdateConnectionState(ConnectionState.Connecting);
+                CurrentDevice = device;
+                
+                _connectionCts = new CancellationTokenSource();
+                _tcpClient = new TcpClient();
+                
+                // Configure TCP client for better reliability
+                _tcpClient.NoDelay = true;
+                _tcpClient.ReceiveTimeout = 30000; // 30 seconds
+                _tcpClient.SendTimeout = 30000;    // 30 seconds
+                
+                // Set timeout for connection with exponential backoff
+                var timeoutMs = 10000 + (attempt - 1) * 5000; // 10s, 15s, 20s
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
+                cts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
+                
+                _logger.LogInformation($"Connection attempt {attempt}/{maxRetries} to {device.IpAddress}:{device.Port}");
+                
+                await _tcpClient.ConnectAsync(device.IpAddress, device.Port, cts.Token);
+                
+                if (_tcpClient.Connected)
+                {
+                    _stream = _tcpClient.GetStream();
+                    UpdateConnectionState(ConnectionState.Connected);
+                    _logger.LogInformation($"Connected to device at {device.IpAddress}:{device.Port} on attempt {attempt}");
+                    
+                    // Start background read task
+                    _ = Task.Run(() => ReadDataAsync(_connectionCts.Token), _connectionCts.Token);
+                    
+                    return true;
+                }
+                
+                _logger.LogWarning($"Connection attempt {attempt} failed - not connected");
+                
+                if (attempt < maxRetries)
+                {
+                    var delay = baseDelayMs * attempt; // Progressive delay
+                    _logger.LogInformation($"Retrying connection in {delay}ms...");
+                    await Task.Delay(delay, cancellationToken);
+                }
             }
-            
-            UpdateConnectionState(ConnectionState.Connecting);
-            CurrentDevice = device;
-            
-            _connectionCts = new CancellationTokenSource();
-            _tcpClient = new TcpClient();
-            
-            // Set timeout for connection
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
-            
-            await _tcpClient.ConnectAsync(device.IpAddress, device.Port, cts.Token);
-            
-            if (_tcpClient.Connected)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _stream = _tcpClient.GetStream();
-                UpdateConnectionState(ConnectionState.Connected);
-                _logger.LogInformation($"Connected to device at {device.IpAddress}:{device.Port}");
-                
-                // Start background read task
-                _ = Task.Run(() => ReadDataAsync(_connectionCts.Token), _connectionCts.Token);
-                
-                return true;
+                _logger.LogInformation("Connection cancelled by user");
+                UpdateConnectionState(ConnectionState.Disconnected);
+                return false;
             }
-            
-            UpdateConnectionState(ConnectionState.Disconnected);
-            return false;
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Connection attempt {attempt}/{maxRetries} failed: {ex.Message}");
+                
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, $"All connection attempts failed to device at {device.IpAddress}:{device.Port}");
+                    UpdateConnectionState(ConnectionState.Error);
+                    return false;
+                }
+                
+                // Progressive delay between retries
+                var delay = baseDelayMs * attempt;
+                await Task.Delay(delay, cancellationToken);
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Failed to connect to device at {device.IpAddress}:{device.Port}");
-            UpdateConnectionState(ConnectionState.Error);
-            return false;
-        }
+        
+        UpdateConnectionState(ConnectionState.Error);
+        return false;
     }
     
-    public async Task DisconnectAsync()
+    public Task DisconnectAsync()
     {
         try
         {
@@ -103,6 +141,8 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
         {
             _logger.LogError(ex, "Error during disconnect");
         }
+        
+        return Task.CompletedTask;
     }
     
     public async Task<CommandResponse> SendCommandAsync(CommandRequest request, CancellationToken cancellationToken = default)
@@ -114,18 +154,32 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
         
         try
         {
-            await _sendLock.WaitAsync(cancellationToken);
+            // Add timeout to prevent deadlock
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            await _sendLock.WaitAsync(cts.Token);
+            
+            // Apply command-specific timeout if specified
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (request.TimeoutMs > 0)
+            {
+                commandCts.CancelAfter(TimeSpan.FromMilliseconds(request.TimeoutMs));
+            }
+            else
+            {
+                commandCts.CancelAfter(TimeSpan.FromSeconds(10)); // Default 10 second timeout
+            }
             
             // Convert command to bytes (customize based on your protocol)
             var commandBytes = Encoding.UTF8.GetBytes(request.Command);
             
             // Send command
-            await _stream.WriteAsync(commandBytes, cancellationToken);
-            await _stream.FlushAsync(cancellationToken);
+            await _stream.WriteAsync(commandBytes, commandCts.Token);
+            await _stream.FlushAsync(commandCts.Token);
             
             // Read response (customize based on your protocol)
             var buffer = new byte[1024];
-            var bytesRead = await _stream.ReadAsync(buffer, cancellationToken);
+            var bytesRead = await _stream.ReadAsync(buffer, commandCts.Token);
             
             if (bytesRead > 0)
             {
@@ -138,6 +192,15 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Error sending command: {request.Command}");
+            
+            // Check if it's a connection error and update state
+            if (ex is SocketException or IOException or ObjectDisposedException)
+            {
+                _logger.LogWarning("Connection lost during command execution");
+                UpdateConnectionState(ConnectionState.Error);
+                return CommandResponse.CreateError(request.CommandId, "Connection lost", ResponseCode.ConnectionError);
+            }
+            
             return CommandResponse.CreateError(request.CommandId, ex.Message, ResponseCode.Error);
         }
         finally
@@ -155,7 +218,10 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
         
         try
         {
-            await _sendLock.WaitAsync(cancellationToken);
+            // Add timeout to prevent deadlock
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            await _sendLock.WaitAsync(cts.Token);
             
             await _stream.WriteAsync(data, cancellationToken);
             await _stream.FlushAsync(cancellationToken);
@@ -200,33 +266,69 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
     private async Task ReadDataAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[4096];
+        var consecutiveErrors = 0;
+        const int maxConsecutiveErrors = 3;
         
         try
         {
             while (!cancellationToken.IsCancellationRequested && _stream != null && IsConnected)
             {
-                var bytesRead = await _stream.ReadAsync(buffer, cancellationToken);
-                
-                if (bytesRead > 0)
+                try
                 {
-                    var data = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    DataReceived?.Invoke(this, data);
+                    // Add timeout to read operations to prevent hanging
+                    using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    readCts.CancelAfter(TimeSpan.FromSeconds(30));
+                    
+                    var bytesRead = await _stream.ReadAsync(buffer, readCts.Token);
+                    
+                    if (bytesRead > 0)
+                    {
+                        consecutiveErrors = 0; // Reset error counter on successful read
+                        var data = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        DataReceived?.Invoke(this, data);
+                    }
+                    else
+                    {
+                        // Connection closed gracefully
+                        _logger.LogInformation("Device connection closed gracefully");
+                        UpdateConnectionState(ConnectionState.Disconnected);
+                        break;
+                    }
                 }
-                else
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    // Connection closed
+                    _logger.LogDebug("Read operation cancelled by user request");
                     break;
+                }
+                catch (Exception ex)
+                {
+                    consecutiveErrors++;
+                    _logger.LogWarning(ex, $"Error reading data from device (consecutive errors: {consecutiveErrors})");
+                    
+                    if (consecutiveErrors >= maxConsecutiveErrors)
+                    {
+                        _logger.LogError("Too many consecutive read errors, marking connection as failed");
+                        UpdateConnectionState(ConnectionState.Error);
+                        break;
+                    }
+                    
+                    // Brief delay before retrying
+                    await Task.Delay(1000, cancellationToken);
                 }
             }
         }
-        catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
             _logger.LogDebug("Read operation cancelled");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading data from device");
+            _logger.LogError(ex, "Critical error in read loop");
             UpdateConnectionState(ConnectionState.Error);
+        }
+        finally
+        {
+            _logger.LogDebug("Read data task completed");
         }
     }
     

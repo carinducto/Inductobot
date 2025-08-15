@@ -184,7 +184,7 @@ public class DeviceDiscoveryService : IDeviceDiscoveryService
         }
     }
     
-    private async Task<List<IPAddress>> GetLocalNetworkAddressesAsync()
+    private Task<List<IPAddress>> GetLocalNetworkAddressesAsync()
     {
         var addresses = new List<IPAddress>();
         
@@ -211,7 +211,7 @@ public class DeviceDiscoveryService : IDeviceDiscoveryService
             _logger.LogError(ex, "Error getting local network addresses");
         }
         
-        return addresses;
+        return Task.FromResult(addresses);
     }
     
     private string? GetSubnet(IPAddress address)

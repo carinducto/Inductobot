@@ -16,7 +16,9 @@ public class ByteSnapTcpClient : IDisposable
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
+#pragma warning disable CS0067 // Event is declared but never used
     public event EventHandler<byte[]>? DataReceived;
+#pragma warning restore CS0067
     
     public ConnectionState ConnectionState { get; private set; } = ConnectionState.Disconnected;
     public UASDeviceInfo? CurrentDevice { get; private set; }
@@ -73,7 +75,7 @@ public class ByteSnapTcpClient : IDisposable
         }
     }
     
-    public async Task DisconnectAsync()
+    public Task DisconnectAsync()
     {
         try
         {
@@ -91,6 +93,8 @@ public class ByteSnapTcpClient : IDisposable
         {
             _logger.LogError(ex, "Error during disconnect");
         }
+        
+        return Task.CompletedTask;
     }
     
     public async Task<ApiResponse<T>> SendCommandAsync<T>(string endpoint, HttpMethod method, object? payload = null, CancellationToken cancellationToken = default)
@@ -102,7 +106,10 @@ public class ByteSnapTcpClient : IDisposable
         
         try
         {
-            await _sendLock.WaitAsync(cancellationToken);
+            // Add timeout to prevent deadlock
+            using var lockCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            lockCts.CancelAfter(TimeSpan.FromSeconds(30));
+            await _sendLock.WaitAsync(lockCts.Token);
             
             var request = new
             {
@@ -122,14 +129,24 @@ public class ByteSnapTcpClient : IDisposable
             await _stream.WriteAsync(requestBytes, cancellationToken);
             await _stream.FlushAsync(cancellationToken);
             
-            // Read response length
+            // Read response length with timeout
             var responseLengthBytes = new byte[4];
-            await _stream.ReadExactlyAsync(responseLengthBytes, cancellationToken);
+            using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readCts.CancelAfter(TimeSpan.FromSeconds(10));
+            await _stream.ReadExactlyAsync(responseLengthBytes, readCts.Token);
             var responseLength = BitConverter.ToInt32(responseLengthBytes);
             
-            // Read response
+            // Validate response length to prevent memory issues
+            if (responseLength > 10 * 1024 * 1024) // 10MB limit
+            {
+                throw new InvalidOperationException($"Response too large: {responseLength} bytes");
+            }
+            
+            // Read response with timeout
             var responseBytes = new byte[responseLength];
-            await _stream.ReadExactlyAsync(responseBytes, cancellationToken);
+            using var readCts2 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readCts2.CancelAfter(TimeSpan.FromSeconds(30));
+            await _stream.ReadExactlyAsync(responseBytes, readCts2.Token);
             
             var responseJson = Encoding.UTF8.GetString(responseBytes);
             var response = JsonSerializer.Deserialize<ApiResponse<T>>(responseJson);
@@ -206,7 +223,10 @@ public class ByteSnapTcpClient : IDisposable
         
         try
         {
-            await _sendLock.WaitAsync(cancellationToken);
+            // Add timeout to prevent deadlock
+            using var lockCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            lockCts.CancelAfter(TimeSpan.FromSeconds(30));
+            await _sendLock.WaitAsync(lockCts.Token);
             
             // Send serial command marker
             var marker = Encoding.UTF8.GetBytes("SERIAL:");
@@ -220,14 +240,24 @@ public class ByteSnapTcpClient : IDisposable
             await _stream.WriteAsync(serialData, cancellationToken);
             await _stream.FlushAsync(cancellationToken);
             
-            // Read response length
+            // Read response length with timeout
             var responseLengthBytes = new byte[4];
-            await _stream.ReadExactlyAsync(responseLengthBytes, cancellationToken);
+            using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readCts.CancelAfter(TimeSpan.FromSeconds(10));
+            await _stream.ReadExactlyAsync(responseLengthBytes, readCts.Token);
             var responseLength = BitConverter.ToInt32(responseLengthBytes);
             
-            // Read response
+            // Validate response length to prevent memory issues
+            if (responseLength > 10 * 1024 * 1024) // 10MB limit
+            {
+                throw new InvalidOperationException($"Response too large: {responseLength} bytes");
+            }
+            
+            // Read response with timeout
             var responseBytes = new byte[responseLength];
-            await _stream.ReadExactlyAsync(responseBytes, cancellationToken);
+            using var readCts2 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readCts2.CancelAfter(TimeSpan.FromSeconds(30));
+            await _stream.ReadExactlyAsync(responseBytes, readCts2.Token);
             
             return responseBytes;
         }

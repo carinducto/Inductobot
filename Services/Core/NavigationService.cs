@@ -64,9 +64,10 @@ public class NavigationService : INavigationService
     {
         try
         {
-            if (Application.Current?.MainPage != null)
+            var window = Application.Current?.Windows?.FirstOrDefault();
+            if (window?.Page != null)
             {
-                await Application.Current.MainPage.DisplayAlert(title, message, "OK");
+                await window.Page.DisplayAlert(title, message, "OK");
             }
         }
         catch (Exception ex)
@@ -79,9 +80,10 @@ public class NavigationService : INavigationService
     {
         try
         {
-            if (Application.Current?.MainPage != null)
+            var window = Application.Current?.Windows?.FirstOrDefault();
+            if (window?.Page != null)
             {
-                return await Application.Current.MainPage.DisplayAlert(title, message, "Yes", "No");
+                return await window.Page.DisplayAlert(title, message, "Yes", "No");
             }
         }
         catch (Exception ex)
@@ -96,9 +98,10 @@ public class NavigationService : INavigationService
     {
         try
         {
-            if (Application.Current?.MainPage != null)
+            var window = Application.Current?.Windows?.FirstOrDefault();
+            if (window?.Page != null)
             {
-                return await Application.Current.MainPage.DisplayPromptAsync(title, message, initialValue: defaultValue);
+                return await window.Page.DisplayPromptAsync(title, message, initialValue: defaultValue);
             }
         }
         catch (Exception ex)

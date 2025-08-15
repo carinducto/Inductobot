@@ -53,5 +53,6 @@ public enum ResponseCode
     Error = 500,
     NotImplemented = 501,
     ServiceUnavailable = 503,
+    ConnectionError = 521, // Custom code for connection errors
     Unknown = 0
 }
