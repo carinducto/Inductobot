@@ -1,54 +1,58 @@
-﻿using Inductobot.Services.Communication;
-using Inductobot.Models.Commands;
-using Inductobot.Models.Device;
-using Inductobot.Models.Measurements;
+﻿using Inductobot.ViewModels;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace Inductobot;
 
 public partial class MainPage : ContentPage
 {
-    private readonly ByteSnapTcpClient? _tcpClient;
+    private readonly UasWandControlViewModel _viewModel;
     private readonly ILogger<MainPage> _logger;
 
-    public MainPage(ByteSnapTcpClient tcpClient, ILogger<MainPage> logger)
+    public MainPage(UasWandControlViewModel viewModel, ILogger<MainPage> logger)
     {
         InitializeComponent();
-        _tcpClient = tcpClient;
+        _viewModel = viewModel;
         _logger = logger;
+        BindingContext = _viewModel;
         
-        if (_tcpClient != null)
-            _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
+        // Subscribe to ViewModel property changes
+        _viewModel.PropertyChanged += OnPropertyChanged;
+        
         UpdateConnectionUI();
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        if (_tcpClient != null)
-            _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
+        if (_viewModel != null)
+        {
+            _viewModel.PropertyChanged -= OnPropertyChanged;
+            _viewModel.Dispose();
+        }
     }
 
-    private void OnConnectionStateChanged(object? sender, Models.Device.ConnectionState state)
+    private void OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         try
         {
-            MainThread.BeginInvokeOnMainThread(() => 
+            if (e.PropertyName == nameof(_viewModel.IsConnected) || e.PropertyName == nameof(_viewModel.StatusMessage))
             {
-                try
+                MainThread.BeginInvokeOnMainThread(() => 
                 {
-                    UpdateConnectionUI();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error updating connection UI");
-                }
-            });
+                    try
+                    {
+                        UpdateConnectionUI();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating connection UI");
+                    }
+                });
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in OnConnectionStateChanged event handler");
+            _logger.LogError(ex, "Error in PropertyChanged event handler");
         }
     }
 
@@ -56,21 +60,17 @@ public partial class MainPage : ContentPage
     {
         try
         {
-            if (_tcpClient?.IsConnected == true)
+            ConnectionStatusLabel.Text = _viewModel.IsConnected ? "Connected" : "Not Connected";
+            DisconnectButton.IsVisible = _viewModel.IsConnected;
+            StatusLabel.Text = _viewModel.StatusMessage;
+            
+            if (_viewModel.IsConnected)
             {
-                ConnectionStatusLabel.Text = "Connected";
-                DisconnectButton.IsVisible = true;
-                
-                if (_tcpClient?.CurrentDevice != null)
-                {
-                    DeviceInfoLabel.Text = $"{_tcpClient.CurrentDevice.IpAddress}:{_tcpClient.CurrentDevice.Port}";
-                }
+                DeviceInfoLabel.Text = "UAS-WAND Device Connected";
             }
             else
             {
-                ConnectionStatusLabel.Text = "Not Connected";
                 DeviceInfoLabel.Text = "No device selected";
-                DisconnectButton.IsVisible = false;
             }
         }
         catch (Exception ex)
@@ -95,357 +95,206 @@ public partial class MainPage : ContentPage
     {
         try
         {
-            if (_tcpClient != null)
-                await _tcpClient.DisconnectAsync();
-            StatusLabel.Text = "Disconnected";
+            await _viewModel.DisconnectAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error disconnecting from device");
-            StatusLabel.Text = "Disconnect error";
+            await DisplayAlert("Error", ex.Message, "OK");
         }
     }
 
     private async void OnGetDeviceInfoClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Getting device info...";
-            var response = _tcpClient != null ? await _tcpClient.GetDeviceInfoAsync() : ApiResponse<UASDeviceInfo>.Failure("TCP client not available", "CLIENT_NULL");
-            
-            if (response.IsSuccess && response.Data != null)
+            var success = await _viewModel.GetDeviceInfoAsync();
+            if (success)
             {
-                var info = JsonSerializer.Serialize(response.Data, new JsonSerializerOptions { WriteIndented = true });
-                DeviceInfoText.Text = info;
-                StatusLabel.Text = "Device info retrieved";
+                DeviceInfoText.Text = _viewModel.DeviceInfoText;
             }
             else
             {
-                DeviceInfoText.Text = $"Error: {response.Message}";
-                StatusLabel.Text = "Failed to get device info";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting device info");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnKeepAliveClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Sending keep alive...";
-            var response = await _tcpClient.KeepAliveAsync();
-            
-            if (response.IsSuccess)
+            var success = await _viewModel.SendKeepAliveAsync();
+            if (!success)
             {
-                StatusLabel.Text = "Keep alive successful";
-            }
-            else
-            {
-                StatusLabel.Text = $"Keep alive failed: {response.Message}";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending keep alive");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnGetWifiSettingsClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Getting WiFi settings...";
-            var response = await _tcpClient.GetWifiSettingsAsync();
-            
-            if (response.IsSuccess && response.Data != null)
+            var success = await _viewModel.GetWifiSettingsAsync();
+            if (success)
             {
-                SsidEntry.Text = response.Data.Ssid ?? "";
-                StatusLabel.Text = "WiFi settings retrieved";
+                SsidEntry.Text = _viewModel.Ssid;
             }
             else
             {
-                StatusLabel.Text = $"Failed to get WiFi settings: {response.Message}";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting WiFi settings");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnSleepDeviceClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         var confirm = await DisplayAlert("Confirm", "Put device to sleep?", "Yes", "No");
         if (!confirm) return;
 
         try
         {
-            StatusLabel.Text = "Putting device to sleep...";
-            var response = await _tcpClient.SleepAsync();
-            
-            if (response.IsSuccess)
-            {
-                StatusLabel.Text = "Device sleep command sent";
-            }
-            else
-            {
-                StatusLabel.Text = $"Sleep failed: {response.Message}";
-            }
+            // Note: Sleep functionality would need to be added to the ViewModel
+            await DisplayAlert("Info", "Sleep functionality not yet implemented in new architecture", "OK");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error putting device to sleep");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnStartScanClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Starting scan...";
-            var response = await _tcpClient.StartScanAsync(ScanTask.Start);
-            
-            if (response.IsSuccess)
+            var success = await _viewModel.StartScanAsync();
+            if (!success)
             {
-                StatusLabel.Text = "Scan started";
-            }
-            else
-            {
-                StatusLabel.Text = $"Start scan failed: {response.Message}";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting scan");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnStopScanClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Stopping scan...";
-            var response = await _tcpClient.StartScanAsync(ScanTask.Stop);
-            
-            if (response.IsSuccess)
+            var success = await _viewModel.StopScanAsync();
+            if (!success)
             {
-                StatusLabel.Text = "Scan stopped";
-            }
-            else
-            {
-                StatusLabel.Text = $"Stop scan failed: {response.Message}";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping scan");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnGetMeasurementClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Getting measurement...";
-            var response = await _tcpClient.GetMeasurementAsync();
-            
-            if (response.IsSuccess && response.Data != null)
+            var success = await _viewModel.GetMeasurementAsync();
+            if (success)
             {
-                var measurement = JsonSerializer.Serialize(response.Data, new JsonSerializerOptions { WriteIndented = true });
-                MeasurementText.Text = measurement;
-                StatusLabel.Text = "Measurement retrieved";
+                MeasurementText.Text = _viewModel.MeasurementText;
             }
             else
             {
-                MeasurementText.Text = $"Error: {response.Message}";
-                StatusLabel.Text = "Failed to get measurement";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting measurement");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnGetLiveReadingClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
-        if (!int.TryParse(StartIndexEntry.Text, out int startIndex) || startIndex < 0)
-        {
-            await DisplayAlert("Error", "Invalid start index", "OK");
-            return;
-        }
-
-        if (!int.TryParse(NumPointsEntry.Text, out int numPoints) || numPoints <= 0)
-        {
-            await DisplayAlert("Error", "Invalid number of points", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Getting live reading...";
-            var response = await _tcpClient.GetLiveReadingAsync(startIndex, numPoints);
+            // Update ViewModel properties from UI
+            _viewModel.StartIndex = StartIndexEntry.Text ?? "0";
+            _viewModel.NumPoints = NumPointsEntry.Text ?? "100";
             
-            if (response.IsSuccess && response.Data != null)
+            var success = await _viewModel.GetLiveReadingAsync();
+            if (success)
             {
-                var reading = JsonSerializer.Serialize(response.Data, new JsonSerializerOptions { WriteIndented = true });
-                MeasurementText.Text = reading;
-                StatusLabel.Text = "Live reading retrieved";
+                MeasurementText.Text = _viewModel.MeasurementText;
             }
             else
             {
-                MeasurementText.Text = $"Error: {response.Message}";
-                StatusLabel.Text = "Failed to get live reading";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting live reading");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnSetWifiSettingsClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(SsidEntry.Text))
-        {
-            await DisplayAlert("Error", "Please enter SSID", "OK");
-            return;
-        }
-
         try
         {
-            StatusLabel.Text = "Setting WiFi settings...";
-            var settings = new WifiSettings
-            {
-                Ssid = SsidEntry.Text,
-                Password = PasswordEntry.Text,
-                Enable = true
-            };
+            // Update ViewModel properties from UI
+            _viewModel.Ssid = SsidEntry.Text ?? "";
+            _viewModel.Password = PasswordEntry.Text ?? "";
             
-            var response = await _tcpClient.SetWifiSettingsAsync(settings);
-            
-            if (response.IsSuccess)
+            var success = await _viewModel.SetWifiSettingsAsync();
+            if (!success)
             {
-                StatusLabel.Text = "WiFi settings updated";
-            }
-            else
-            {
-                StatusLabel.Text = $"WiFi settings failed: {response.Message}";
+                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error setting WiFi settings");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 
     private async void OnRestartWifiClicked(object sender, EventArgs e)
     {
-        if (_tcpClient?.IsConnected != true)
-        {
-            await DisplayAlert("Error", "Not connected to any device", "OK");
-            return;
-        }
-
         var confirm = await DisplayAlert("Confirm", "Restart WiFi?", "Yes", "No");
         if (!confirm) return;
 
         try
         {
-            StatusLabel.Text = "Restarting WiFi...";
-            var response = await _tcpClient.RestartWifiAsync();
-            
-            if (response.IsSuccess)
-            {
-                StatusLabel.Text = "WiFi restart successful";
-                await DisplayAlert("Success", "WiFi restart command sent successfully. Device may temporarily disconnect.", "OK");
-            }
-            else
-            {
-                StatusLabel.Text = $"WiFi restart failed: {response.Message}";
-                await DisplayAlert("Error", $"WiFi restart failed: {response.Message}", "OK");
-            }
+            // Note: WiFi restart functionality would need to be added to the ViewModel
+            await DisplayAlert("Info", "WiFi restart functionality not yet implemented in new architecture", "OK");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error restarting WiFi");
             await DisplayAlert("Error", ex.Message, "OK");
-            StatusLabel.Text = "Error occurred";
         }
     }
 }

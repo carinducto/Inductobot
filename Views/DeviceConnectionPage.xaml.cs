@@ -1,6 +1,5 @@
 using Inductobot.Models.Device;
-using Inductobot.Services.Communication;
-using Inductobot.Services.Device;
+using Inductobot.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
 
@@ -8,21 +7,21 @@ namespace Inductobot.Views;
 
 public partial class DeviceConnectionPage : ContentPage
 {
-    private readonly IDeviceDiscoveryService _discoveryService;
-    private readonly ByteSnapTcpClient _tcpClient;
+    private readonly IUasWandDiscoveryService _discoveryService;
+    private readonly IUasWandDeviceService _deviceService;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
     private CancellationTokenSource? _connectionCts;
     private CancellationTokenSource? _scanCts;
     
     public DeviceConnectionPage(
-        IDeviceDiscoveryService discoveryService,
-        ByteSnapTcpClient tcpClient,
+        IUasWandDiscoveryService discoveryService,
+        IUasWandDeviceService deviceService,
         ILogger<DeviceConnectionPage> logger)
     {
         InitializeComponent();
         _discoveryService = discoveryService;
-        _tcpClient = tcpClient;
+        _deviceService = deviceService;
         _logger = logger;
         
         InitializeUI();
@@ -40,8 +39,7 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered += OnDeviceDiscovered;
         _discoveryService.DeviceRemoved += OnDeviceRemoved;
         _discoveryService.ScanningStateChanged += OnScanningStateChanged;
-        if (_tcpClient != null)
-            _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
+        _deviceService.ConnectionStateChanged += OnConnectionStateChanged;
     }
     
     private void OnDeviceDiscovered(object? sender, UASDeviceInfo device)
@@ -83,8 +81,7 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered -= OnDeviceDiscovered;
         _discoveryService.DeviceRemoved -= OnDeviceRemoved;
         _discoveryService.ScanningStateChanged -= OnScanningStateChanged;
-        if (_tcpClient != null)
-            _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
+        _deviceService.ConnectionStateChanged -= OnConnectionStateChanged;
         
         // Dispose cancellation tokens
         _connectionCts?.Dispose();
@@ -225,7 +222,7 @@ public partial class DeviceConnectionPage : ContentPage
                 return;
             }
             
-            _discoveryService.AddManualDevice(ipAddress, port);
+            await _discoveryService.AddDeviceManuallyAsync(ipAddress, port);
             
             IpAddressEntry.Text = string.Empty;
             PortEntry.Text = "80";
@@ -275,15 +272,7 @@ public partial class DeviceConnectionPage : ContentPage
             StatusLabel.Text = "Connecting...";
             ConnectionInfoLabel.Text = $"{ipAddress}:{port}";
             
-            // Show a cancellable progress dialog
-            if (_tcpClient == null)
-            {
-                StatusLabel.Text = "TCP client not available";
-                await SafeDisplayAlert("Error", "TCP client is not available", "OK");
-                return;
-            }
-            
-            var connectTask = _tcpClient.ConnectAsync(ipAddress, port, _connectionCts.Token);
+            var connectTask = _deviceService.ConnectToDeviceAsync(ipAddress, port, _connectionCts.Token);
             
             // Create timeout with user option to cancel
             var timeoutTask = Task.Delay(TimeSpan.FromSeconds(15), _connectionCts.Token);
@@ -378,7 +367,7 @@ public partial class DeviceConnectionPage : ContentPage
                     case "Test Connection":
                         try
                         {
-                            var reachable = await _discoveryService.TestConnectionAsync(device);
+                            var reachable = await _deviceService.TestConnectionAsync(device.IpAddress, device.Port);
                             await DisplayAlert("Connection Test", reachable ? "Device is reachable" : "Device is not reachable", "OK");
                         }
                         catch (Exception testEx)

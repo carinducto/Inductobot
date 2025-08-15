@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using Inductobot.Services.Communication;
+using Inductobot.Extensions;
 using Inductobot.Services.Core;
 using Inductobot.Services.Data;
 using Inductobot.Services.Device;
@@ -21,15 +21,16 @@ public static class MauiProgram
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 			});
 
-		// Register Services - Singletons (live throughout app lifetime)
-		builder.Services.AddSingleton<ITcpDeviceService, TcpDeviceService>();
-		builder.Services.AddSingleton<ByteSnapTcpClient>();
-		builder.Services.AddSingleton<IDeviceDiscoveryService, DeviceDiscoveryService>();
+		// Register UAS-WAND Services - Modular architecture with clean separation
+		builder.Services.AddUasWandServices();
+		
+		// Register Core Services
 		builder.Services.AddSingleton<IMessagingService, MessagingService>();
 		builder.Services.AddSingleton<INavigationService, NavigationService>();
 		
 		// Register ViewModels - Transient (new instance each time)
 		builder.Services.AddTransient<MainViewModel>();
+		// UasWandControlViewModel is already registered by AddUasWandServices()
 		
 		// Register Views
 		builder.Services.AddTransient<MainPage>();
