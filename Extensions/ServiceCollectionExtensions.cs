@@ -73,7 +73,7 @@ public class MockUasWandTransport : IUasWandTransport
 public class MockUasWandApiService : IUasWandApiService
 {
     public Task<Models.Commands.ApiResponse<Models.Device.UASDeviceInfo>> GetDeviceInfoAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(Models.Commands.ApiResponse<Models.Device.UASDeviceInfo>.Success(new Models.Device.UASDeviceInfo { Name = "Mock UAS-WAND" }));
+        => Task.FromResult(Models.Commands.ApiResponse<Models.Device.UASDeviceInfo>.Success(new Models.Device.UASDeviceInfo { Name = "UAS-WAND_MockDevice" }));
     
     public Task<Models.Commands.ApiResponse<Models.Commands.CodedResponse>> KeepAliveAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(Models.Commands.ApiResponse<Models.Commands.CodedResponse>.Success(new Models.Commands.CodedResponse()));

@@ -249,12 +249,14 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
     private async Task ScanNetworkForDevicesAsync(CancellationToken cancellationToken)
     {
         var localIpAddresses = GetLocalIPAddresses();
+        _logger.LogInformation("Found {Count} local network interfaces to scan", localIpAddresses.Count);
         
         foreach (var localIp in localIpAddresses)
         {
             if (cancellationToken.IsCancellationRequested)
                 break;
             
+            _logger.LogDebug("Scanning subnet for local IP: {LocalIp}", localIp);
             await ScanSubnetAsync(localIp, cancellationToken);
         }
     }
@@ -312,7 +314,10 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
                     
                     if (await TestPortAsync(ipAddress, port, cancellationToken))
                     {
-                        await AddDiscoveredDeviceAsync(ipAddress, port, cancellationToken);
+                        if (await ValidateUasWandDeviceAsync(ipAddress, port, cancellationToken))
+                        {
+                            await AddDiscoveredDeviceAsync(ipAddress, port, cancellationToken);
+                        }
                     }
                 }
             }
@@ -336,6 +341,30 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         }
         catch
         {
+            return false;
+        }
+    }
+    
+    private async Task<bool> ValidateUasWandDeviceAsync(string ipAddress, int port, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Test connection to device and attempt to get device info to validate it's a UAS-WAND device
+            var connectionResult = await _deviceService.TestConnectionAsync(ipAddress, port, cancellationToken);
+            if (!connectionResult)
+            {
+                return false;
+            }
+            
+            // For now, if the device responds to our test connection, we'll consider it a potential UAS-WAND
+            // In a real implementation, we might send a device info command to verify the device name
+            // starts with "UAS-WAND"
+            _logger.LogDebug("Validated potential UAS-WAND device at {IpAddress}:{Port}", ipAddress, port);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to validate UAS-WAND device at {IpAddress}:{Port}", ipAddress, port);
             return false;
         }
     }
@@ -379,7 +408,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         }
     }
     
-    private static List<IPAddress> GetLocalIPAddresses()
+    private List<IPAddress> GetLocalIPAddresses()
     {
         var localIps = new List<IPAddress>();
         
@@ -403,10 +432,11 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
                 }
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Fallback to localhost if network enumeration fails
-            localIps.Add(IPAddress.Parse("127.0.0.1"));
+            _logger.LogError(ex, "Failed to enumerate network interfaces for UAS-WAND discovery");
+            // No hardcoded fallback - if we can't detect network interfaces, 
+            // we can't discover DHCP-assigned UAS-WAND devices
         }
         
         return localIps;

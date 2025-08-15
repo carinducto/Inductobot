@@ -21,7 +21,7 @@ public class DeviceDiscoveryService : IDeviceDiscoveryService
     public IReadOnlyList<UASDeviceInfo> DiscoveredDevices => _discoveredDevices.AsReadOnly();
     public bool IsScanning { get; private set; }
     
-    // Common ports used by Wand devices
+    // Common ports used by UAS-WAND devices
     private readonly int[] _commonPorts = { 80, 443, 8080, 8443, 5000, 5001, 7000, 7001 };
     
     public DeviceDiscoveryService(ILogger<DeviceDiscoveryService> logger, ByteSnapTcpClient tcpClient)
@@ -273,26 +273,11 @@ public class DeviceDiscoveryService : IDeviceDiscoveryService
     
     private async Task ScanKnownDevicesAsync(CancellationToken cancellationToken)
     {
-        // Common Wand device default IPs
-        var knownIPs = new[]
-        {
-            "192.168.4.1",  // Default AP mode IP
-            "192.168.1.100",
-            "192.168.0.100",
-            "10.0.0.100"
-        };
-        
-        var scanTasks = new List<Task>();
-        
-        foreach (var ip in knownIPs)
-        {
-            foreach (var port in _commonPorts)
-            {
-                scanTasks.Add(ScanDeviceAsync(ip, port, cancellationToken));
-            }
-        }
-        
-        await Task.WhenAll(scanTasks);
+        // No hardcoded IPs - UAS-WAND devices get DHCP addresses from gateway
+        // This method is kept for interface compatibility but performs no scanning
+        // All discovery is done through subnet scanning based on PC's network interfaces
+        _logger.LogDebug("Skipping known device scan - using dynamic subnet discovery only");
+        await Task.CompletedTask;
     }
     
     private async Task ScanDeviceAsync(string ipAddress, int port, CancellationToken cancellationToken)
