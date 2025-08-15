@@ -19,7 +19,21 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
     
     public ConnectionState ConnectionState { get; private set; } = ConnectionState.Disconnected;
     public UASDeviceInfo? CurrentDevice { get; private set; }
-    public bool IsConnected => ConnectionState == ConnectionState.Connected && _tcpClient?.Connected == true;
+    public bool IsConnected 
+    { 
+        get
+        {
+            try
+            {
+                return ConnectionState == ConnectionState.Connected && _tcpClient?.Connected == true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Exception checking TCP client connection state");
+                return false;
+            }
+        }
+    }
     
     public TcpDeviceService(ILogger<TcpDeviceService> logger)
     {
@@ -60,9 +74,12 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
                 _tcpClient = new TcpClient();
                 
                 // Configure TCP client for better reliability
-                _tcpClient.NoDelay = true;
-                _tcpClient.ReceiveTimeout = 30000; // 30 seconds
-                _tcpClient.SendTimeout = 30000;    // 30 seconds
+                if (_tcpClient != null)
+                {
+                    _tcpClient.NoDelay = true;
+                    _tcpClient.ReceiveTimeout = 30000; // 30 seconds
+                    _tcpClient.SendTimeout = 30000;    // 30 seconds
+                }
                 
                 // Set timeout for connection with exponential backoff
                 var timeoutMs = 10000 + (attempt - 1) * 5000; // 10s, 15s, 20s
@@ -71,11 +88,11 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
                 
                 _logger.LogInformation($"Connection attempt {attempt}/{maxRetries} to {device.IpAddress}:{device.Port}");
                 
-                await _tcpClient.ConnectAsync(device.IpAddress, device.Port, cts.Token);
+                await _tcpClient!.ConnectAsync(device.IpAddress, device.Port, cts.Token);
                 
-                if (_tcpClient.Connected)
+                if (_tcpClient?.Connected == true)
                 {
-                    _stream = _tcpClient.GetStream();
+                    _stream = _tcpClient?.GetStream();
                     UpdateConnectionState(ConnectionState.Connected);
                     _logger.LogInformation($"Connected to device at {device.IpAddress}:{device.Port} on attempt {attempt}");
                     
@@ -125,13 +142,53 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
     {
         try
         {
-            _connectionCts?.Cancel();
-            _stream?.Close();
-            _tcpClient?.Close();
+            // Cancel connection operations
+            try
+            {
+                _connectionCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // CTS already disposed - this is fine
+            }
             
+            // Close stream safely
+            try
+            {
+                _stream?.Close();
+                _stream?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error closing network stream");
+            }
+            
+            // Close TCP client safely
+            try
+            {
+                _tcpClient?.Close();
+                _tcpClient?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error closing TCP client");
+            }
+            
+            // Clean up references
             _stream = null;
             _tcpClient = null;
+            
+            // Dispose CTS safely
+            try
+            {
+                _connectionCts?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed - this is fine
+            }
             _connectionCts = null;
+            
             CurrentDevice = null;
             
             UpdateConnectionState(ConnectionState.Disconnected);
@@ -171,19 +228,69 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
             }
             
             // Convert command to bytes (customize based on your protocol)
-            var commandBytes = Encoding.UTF8.GetBytes(request.Command);
+            byte[] commandBytes;
+            try
+            {
+                commandBytes = Encoding.UTF8.GetBytes(request.Command ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to encode command to UTF8: {Command}", request.Command);
+                return CommandResponse.CreateError(request.CommandId, "Failed to encode command", ResponseCode.BadRequest);
+            }
             
             // Send command
-            await _stream.WriteAsync(commandBytes, commandCts.Token);
-            await _stream.FlushAsync(commandCts.Token);
+            try
+            {
+                await _stream.WriteAsync(commandBytes, commandCts.Token);
+                await _stream.FlushAsync(commandCts.Token);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                _logger.LogError(ex, "Stream was disposed during command write");
+                return CommandResponse.CreateError(request.CommandId, "Connection closed during write", ResponseCode.ServiceUnavailable);
+            }
+            catch (IOException ex)
+            {
+                _logger.LogError(ex, "I/O error during command write");
+                return CommandResponse.CreateError(request.CommandId, "Network I/O error during write", ResponseCode.ServiceUnavailable);
+            }
             
             // Read response (customize based on your protocol)
             var buffer = new byte[1024];
-            var bytesRead = await _stream.ReadAsync(buffer, commandCts.Token);
+            int bytesRead;
+            try
+            {
+                bytesRead = await _stream.ReadAsync(buffer, commandCts.Token);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                _logger.LogError(ex, "Stream was disposed during response read");
+                return CommandResponse.CreateError(request.CommandId, "Connection closed during read", ResponseCode.ServiceUnavailable);
+            }
+            catch (IOException ex)
+            {
+                _logger.LogError(ex, "I/O error during response read");
+                return CommandResponse.CreateError(request.CommandId, "Network I/O error during read", ResponseCode.ServiceUnavailable);
+            }
+            catch (OperationCanceledException ex)
+            {
+                _logger.LogError(ex, "Response read timed out");
+                return CommandResponse.CreateError(request.CommandId, "Response read timeout", ResponseCode.Timeout);
+            }
             
             if (bytesRead > 0)
             {
-                var response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                string response;
+                try
+                {
+                    response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to decode response bytes to UTF8");
+                    return CommandResponse.CreateError(request.CommandId, "Failed to decode response", ResponseCode.Error);
+                }
                 return CommandResponse.CreateSuccess(request.CommandId, response);
             }
             
@@ -216,6 +323,11 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
             throw new InvalidOperationException("Not connected to device");
         }
         
+        if (data == null)
+        {
+            throw new ArgumentNullException(nameof(data));
+        }
+        
         try
         {
             // Add timeout to prevent deadlock
@@ -223,11 +335,38 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
             cts.CancelAfter(TimeSpan.FromSeconds(30));
             await _sendLock.WaitAsync(cts.Token);
             
-            await _stream.WriteAsync(data, cancellationToken);
-            await _stream.FlushAsync(cancellationToken);
+            try
+            {
+                await _stream.WriteAsync(data, cancellationToken);
+                await _stream.FlushAsync(cancellationToken);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                _logger.LogError(ex, "Stream was disposed during raw data write");
+                throw new InvalidOperationException("Connection closed during write", ex);
+            }
+            catch (IOException ex)
+            {
+                _logger.LogError(ex, "I/O error during raw data write");
+                throw new InvalidOperationException("Network I/O error during write", ex);
+            }
             
             var buffer = new byte[4096];
-            var bytesRead = await _stream.ReadAsync(buffer, cancellationToken);
+            int bytesRead;
+            try
+            {
+                bytesRead = await _stream.ReadAsync(buffer, cancellationToken);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                _logger.LogError(ex, "Stream was disposed during raw data read");
+                throw new InvalidOperationException("Connection closed during read", ex);
+            }
+            catch (IOException ex)
+            {
+                _logger.LogError(ex, "I/O error during raw data read");
+                throw new InvalidOperationException("Network I/O error during read", ex);
+            }
             
             var response = new byte[bytesRead];
             Array.Copy(buffer, response, bytesRead);
@@ -284,8 +423,20 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
                     if (bytesRead > 0)
                     {
                         consecutiveErrors = 0; // Reset error counter on successful read
-                        var data = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                        DataReceived?.Invoke(this, data);
+                        try
+                        {
+                            var data = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                            SafeInvokeDataReceived(data);
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            _logger.LogWarning(ex, "Invalid UTF8 data received from device");
+                            // Continue reading despite invalid UTF8 data
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error processing received data");
+                        }
                     }
                     else
                     {
@@ -337,13 +488,47 @@ public class TcpDeviceService : ITcpDeviceService, IDisposable
         if (ConnectionState != newState)
         {
             ConnectionState = newState;
-            ConnectionStateChanged?.Invoke(this, newState);
+            try
+            {
+                ConnectionStateChanged?.Invoke(this, newState);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error invoking ConnectionStateChanged event");
+            }
+        }
+    }
+    
+    private void SafeInvokeDataReceived(string data)
+    {
+        try
+        {
+            DataReceived?.Invoke(this, data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error invoking DataReceived event");
         }
     }
     
     public void Dispose()
     {
-        DisconnectAsync().GetAwaiter().GetResult();
-        _sendLock?.Dispose();
+        try
+        {
+            DisconnectAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exception during dispose disconnect");
+        }
+        
+        try
+        {
+            _sendLock?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exception disposing send lock");
+        }
     }
 }

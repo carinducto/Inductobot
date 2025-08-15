@@ -1,4 +1,7 @@
 ﻿using Inductobot.Services.Communication;
+using Inductobot.Models.Commands;
+using Inductobot.Models.Device;
+using Inductobot.Models.Measurements;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -6,7 +9,7 @@ namespace Inductobot;
 
 public partial class MainPage : ContentPage
 {
-    private readonly ByteSnapTcpClient _tcpClient;
+    private readonly ByteSnapTcpClient? _tcpClient;
     private readonly ILogger<MainPage> _logger;
 
     public MainPage(ByteSnapTcpClient tcpClient, ILogger<MainPage> logger)
@@ -15,50 +18,97 @@ public partial class MainPage : ContentPage
         _tcpClient = tcpClient;
         _logger = logger;
         
-        _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
+        if (_tcpClient != null)
+            _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
         UpdateConnectionUI();
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
+        if (_tcpClient != null)
+            _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
     }
 
     private void OnConnectionStateChanged(object? sender, Models.Device.ConnectionState state)
     {
-        MainThread.BeginInvokeOnMainThread(() => UpdateConnectionUI());
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() => 
+            {
+                try
+                {
+                    UpdateConnectionUI();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating connection UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnConnectionStateChanged event handler");
+        }
     }
 
     private void UpdateConnectionUI()
     {
-        if (_tcpClient.IsConnected)
+        try
         {
-            ConnectionStatusLabel.Text = "Connected";
-            DisconnectButton.IsVisible = true;
-            
-            if (_tcpClient.CurrentDevice != null)
+            if (_tcpClient?.IsConnected == true)
             {
-                DeviceInfoLabel.Text = $"{_tcpClient.CurrentDevice.IpAddress}:{_tcpClient.CurrentDevice.Port}";
+                ConnectionStatusLabel.Text = "Connected";
+                DisconnectButton.IsVisible = true;
+                
+                if (_tcpClient?.CurrentDevice != null)
+                {
+                    DeviceInfoLabel.Text = $"{_tcpClient.CurrentDevice.IpAddress}:{_tcpClient.CurrentDevice.Port}";
+                }
+            }
+            else
+            {
+                ConnectionStatusLabel.Text = "Not Connected";
+                DeviceInfoLabel.Text = "No device selected";
+                DisconnectButton.IsVisible = false;
             }
         }
-        else
+        catch (Exception ex)
         {
-            ConnectionStatusLabel.Text = "Not Connected";
-            DeviceInfoLabel.Text = "No device selected";
-            DisconnectButton.IsVisible = false;
+            _logger.LogError(ex, "Error updating connection UI elements");
+            
+            // Set safe fallback values
+            try
+            {
+                ConnectionStatusLabel.Text = "Status Unknown";
+                DeviceInfoLabel.Text = "Error";
+                DisconnectButton.IsVisible = false;
+            }
+            catch (Exception fallbackEx)
+            {
+                _logger.LogError(fallbackEx, "Critical error: Unable to update UI elements");
+            }
         }
     }
 
     private async void OnDisconnectClicked(object sender, EventArgs e)
     {
-        await _tcpClient.DisconnectAsync();
-        StatusLabel.Text = "Disconnected";
+        try
+        {
+            if (_tcpClient != null)
+                await _tcpClient.DisconnectAsync();
+            StatusLabel.Text = "Disconnected";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error disconnecting from device");
+            StatusLabel.Text = "Disconnect error";
+        }
     }
 
     private async void OnGetDeviceInfoClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -67,7 +117,7 @@ public partial class MainPage : ContentPage
         try
         {
             StatusLabel.Text = "Getting device info...";
-            var response = await _tcpClient.GetDeviceInfoAsync();
+            var response = _tcpClient != null ? await _tcpClient.GetDeviceInfoAsync() : ApiResponse<UASDeviceInfo>.Failure("TCP client not available", "CLIENT_NULL");
             
             if (response.IsSuccess && response.Data != null)
             {
@@ -91,7 +141,7 @@ public partial class MainPage : ContentPage
 
     private async void OnKeepAliveClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -121,7 +171,7 @@ public partial class MainPage : ContentPage
 
     private async void OnGetWifiSettingsClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -152,7 +202,7 @@ public partial class MainPage : ContentPage
 
     private async void OnSleepDeviceClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -185,7 +235,7 @@ public partial class MainPage : ContentPage
 
     private async void OnStartScanClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -215,7 +265,7 @@ public partial class MainPage : ContentPage
 
     private async void OnStopScanClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -245,7 +295,7 @@ public partial class MainPage : ContentPage
 
     private async void OnGetMeasurementClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -278,7 +328,7 @@ public partial class MainPage : ContentPage
 
     private async void OnGetLiveReadingClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -323,7 +373,7 @@ public partial class MainPage : ContentPage
 
     private async void OnSetWifiSettingsClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;
@@ -366,7 +416,7 @@ public partial class MainPage : ContentPage
 
     private async void OnRestartWifiClicked(object sender, EventArgs e)
     {
-        if (!_tcpClient.IsConnected)
+        if (_tcpClient?.IsConnected != true)
         {
             await DisplayAlert("Error", "Not connected to any device", "OK");
             return;

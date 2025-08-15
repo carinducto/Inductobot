@@ -40,7 +40,34 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered += OnDeviceDiscovered;
         _discoveryService.DeviceRemoved += OnDeviceRemoved;
         _discoveryService.ScanningStateChanged += OnScanningStateChanged;
-        _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
+        if (_tcpClient != null)
+            _tcpClient.ConnectionStateChanged += OnConnectionStateChanged;
+    }
+    
+    private void OnDeviceDiscovered(object? sender, UASDeviceInfo device)
+    {
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
+                    if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
+                    {
+                        _devices.Add(device);
+                        UpdateDeviceCount();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error adding discovered device to UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnDeviceDiscovered event handler");
+        }
     }
     
     protected override void OnDisappearing()
@@ -56,11 +83,57 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered -= OnDeviceDiscovered;
         _discoveryService.DeviceRemoved -= OnDeviceRemoved;
         _discoveryService.ScanningStateChanged -= OnScanningStateChanged;
-        _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
+        if (_tcpClient != null)
+            _tcpClient.ConnectionStateChanged -= OnConnectionStateChanged;
         
         // Dispose cancellation tokens
         _connectionCts?.Dispose();
         _scanCts?.Dispose();
+    }
+    
+    private async Task SafeDisplayAlert(string title, string message, string cancel)
+    {
+        try
+        {
+            if (MainThread.IsMainThread)
+            {
+                await DisplayAlert(title, message, cancel);
+            }
+            else
+            {
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    await DisplayAlert(title, message, cancel);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error displaying alert: {Title} - {Message}", title, message);
+        }
+    }
+    
+    private async Task<bool> SafeDisplayAlert(string title, string message, string accept, string cancel)
+    {
+        try
+        {
+            if (MainThread.IsMainThread)
+            {
+                return await DisplayAlert(title, message, accept, cancel);
+            }
+            else
+            {
+                return await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    return await DisplayAlert(title, message, accept, cancel);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error displaying confirmation alert: {Title} - {Message}", title, message);
+            return false; // Default to cancel/negative response on error
+        }
     }
     
     private async void OnScanNetworkClicked(object sender, EventArgs e)
@@ -127,24 +200,43 @@ public partial class DeviceConnectionPage : ContentPage
         }
     }
     
-    private void OnAddManualDeviceClicked(object sender, EventArgs e)
+    private async void OnAddManualDeviceClicked(object sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(IpAddressEntry.Text))
+        try
         {
-            DisplayAlert("Error", "Please enter an IP address", "OK");
-            return;
+            if (string.IsNullOrWhiteSpace(IpAddressEntry.Text))
+            {
+                await SafeDisplayAlert("Error", "Please enter an IP address", "OK");
+                return;
+            }
+            
+            if (!int.TryParse(PortEntry.Text, out int port) || port <= 0 || port > 65535)
+            {
+                await SafeDisplayAlert("Error", "Please enter a valid port number (1-65535)", "OK");
+                return;
+            }
+            
+            var ipAddress = IpAddressEntry.Text.Trim();
+            
+            // Validate IP address format
+            if (!System.Net.IPAddress.TryParse(ipAddress, out _))
+            {
+                await SafeDisplayAlert("Error", "Please enter a valid IP address format", "OK");
+                return;
+            }
+            
+            _discoveryService.AddManualDevice(ipAddress, port);
+            
+            IpAddressEntry.Text = string.Empty;
+            PortEntry.Text = "80";
+            
+            await SafeDisplayAlert("Success", $"Device {ipAddress}:{port} added to device list", "OK");
         }
-        
-        if (!int.TryParse(PortEntry.Text, out int port) || port <= 0 || port > 65535)
+        catch (Exception ex)
         {
-            DisplayAlert("Error", "Please enter a valid port number (1-65535)", "OK");
-            return;
+            _logger.LogError(ex, "Error adding manual device");
+            await SafeDisplayAlert("Error", "Failed to add device. Please try again.", "OK");
         }
-        
-        _discoveryService.AddManualDevice(IpAddressEntry.Text.Trim(), port);
-        
-        IpAddressEntry.Text = string.Empty;
-        PortEntry.Text = "80";
     }
     
     private async void OnConnectManualClicked(object sender, EventArgs e)
@@ -184,6 +276,13 @@ public partial class DeviceConnectionPage : ContentPage
             ConnectionInfoLabel.Text = $"{ipAddress}:{port}";
             
             // Show a cancellable progress dialog
+            if (_tcpClient == null)
+            {
+                StatusLabel.Text = "TCP client not available";
+                await SafeDisplayAlert("Error", "TCP client is not available", "OK");
+                return;
+            }
+            
             var connectTask = _tcpClient.ConnectAsync(ipAddress, port, _connectionCts.Token);
             
             // Create timeout with user option to cancel
@@ -191,9 +290,10 @@ public partial class DeviceConnectionPage : ContentPage
             
             var completedTask = await Task.WhenAny(connectTask, timeoutTask);
             
+            bool connected;
             if (completedTask == timeoutTask)
             {
-                var userChoice = await DisplayAlert("Connection Timeout", 
+                var userChoice = await SafeDisplayAlert("Connection Timeout", 
                     $"Connection to {ipAddress}:{port} is taking longer than expected. Continue waiting?", 
                     "Keep Trying", "Cancel");
                 
@@ -205,15 +305,18 @@ public partial class DeviceConnectionPage : ContentPage
                 }
                 
                 // Wait for connection to complete if user chose to continue
-                await connectTask;
+                connected = await connectTask;
             }
-            
-            var connected = await connectTask;
+            else
+            {
+                // Connection task completed (either successfully or with exception)
+                connected = await connectTask;
+            }
             
             if (connected)
             {
                 StatusLabel.Text = "Connected";
-                await DisplayAlert("Success", $"Connected to device at {ipAddress}:{port}", "OK");
+                await SafeDisplayAlert("Success", $"Connected to device at {ipAddress}:{port}", "OK");
                 
                 // Navigate to device control page
                 await Shell.Current.GoToAsync("//DeviceControl");
@@ -221,7 +324,7 @@ public partial class DeviceConnectionPage : ContentPage
             else
             {
                 StatusLabel.Text = "Connection failed";
-                await DisplayAlert("Error", $"Failed to connect to device at {ipAddress}:{port}", "OK");
+                await SafeDisplayAlert("Error", $"Failed to connect to device at {ipAddress}:{port}", "OK");
             }
         }
         catch (OperationCanceledException)
@@ -233,7 +336,7 @@ public partial class DeviceConnectionPage : ContentPage
         {
             StatusLabel.Text = "Connection error";
             _logger.LogError(ex, "Error connecting to device");
-            await DisplayAlert("Error", $"Connection error: {ex.Message}", "OK");
+            await SafeDisplayAlert("Error", "Connection failed. Please check device connectivity and try again.", "OK");
         }
         finally
         {
@@ -261,91 +364,170 @@ public partial class DeviceConnectionPage : ContentPage
     
     private async void OnDeviceTapped(object sender, TappedEventArgs e)
     {
-        if (sender is Border border && border.BindingContext is UASDeviceInfo device)
+        try
         {
-            var action = await DisplayActionSheet($"{device.Name}", "Cancel", null, "Connect", "Test Connection", "Refresh", "Remove");
-            
-            switch (action)
+            if (sender is Border border && border.BindingContext is UASDeviceInfo device)
             {
-                case "Connect":
-                    await ConnectToDeviceAsync(device.IpAddress, device.Port);
-                    break;
-                case "Test Connection":
-                    var reachable = await _discoveryService.TestConnectionAsync(device);
-                    await DisplayAlert("Connection Test", reachable ? "Device is reachable" : "Device is not reachable", "OK");
-                    break;
-                case "Refresh":
-                    await _discoveryService.RefreshDeviceAsync(device);
-                    break;
-                case "Remove":
-                    _discoveryService.RemoveDevice(device);
-                    break;
+                var action = await DisplayActionSheet($"{device.Name}", "Cancel", null, "Connect", "Test Connection", "Refresh", "Remove");
+                
+                switch (action)
+                {
+                    case "Connect":
+                        await ConnectToDeviceAsync(device.IpAddress, device.Port);
+                        break;
+                    case "Test Connection":
+                        try
+                        {
+                            var reachable = await _discoveryService.TestConnectionAsync(device);
+                            await DisplayAlert("Connection Test", reachable ? "Device is reachable" : "Device is not reachable", "OK");
+                        }
+                        catch (Exception testEx)
+                        {
+                            _logger.LogError(testEx, "Error testing device connection");
+                            await SafeDisplayAlert("Error", "Failed to test device connection", "OK");
+                        }
+                        break;
+                    case "Refresh":
+                        try
+                        {
+                            await _discoveryService.RefreshDeviceAsync(device);
+                        }
+                        catch (Exception refreshEx)
+                        {
+                            _logger.LogError(refreshEx, "Error refreshing device");
+                            await SafeDisplayAlert("Error", "Failed to refresh device", "OK");
+                        }
+                        break;
+                    case "Remove":
+                        try
+                        {
+                            _discoveryService.RemoveDevice(device);
+                        }
+                        catch (Exception removeEx)
+                        {
+                            _logger.LogError(removeEx, "Error removing device");
+                            await SafeDisplayAlert("Error", "Failed to remove device", "OK");
+                        }
+                        break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnDeviceTapped event handler");
+            try
+            {
+                await SafeDisplayAlert("Error", "An error occurred while processing device action", "OK");
+            }
+            catch (Exception alertEx)
+            {
+                _logger.LogError(alertEx, "Error showing device action error alert");
             }
         }
     }
     
-    private void OnDeviceDiscovered(object? sender, UASDeviceInfo device)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
-            {
-                _devices.Add(device);
-                UpdateDeviceCount();
-            }
-        });
-    }
     
     private void OnDeviceRemoved(object? sender, UASDeviceInfo device)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        try
         {
-            var toRemove = _devices.FirstOrDefault(d => d.IpAddress == device.IpAddress && d.Port == device.Port);
-            if (toRemove != null)
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                _devices.Remove(toRemove);
-                UpdateDeviceCount();
-            }
-        });
+                try
+                {
+                    var toRemove = _devices.FirstOrDefault(d => d.IpAddress == device.IpAddress && d.Port == device.Port);
+                    if (toRemove != null)
+                    {
+                        _devices.Remove(toRemove);
+                        UpdateDeviceCount();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing device from UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnDeviceRemoved event handler");
+        }
     }
     
     private void OnScanningStateChanged(object? sender, bool isScanning)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        try
         {
-            ScanIndicator.IsRunning = isScanning;
-            ScanButton.Text = isScanning ? "Stop Scan" : "Scan Network";
-            ScanButton.IsEnabled = true;
-        });
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
+                    ScanIndicator.IsRunning = isScanning;
+                    ScanButton.Text = isScanning ? "Stop Scan" : "Scan Network";
+                    ScanButton.IsEnabled = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating scan UI state");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnScanningStateChanged event handler");
+        }
     }
     
     private void OnConnectionStateChanged(object? sender, ConnectionState state)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        try
         {
-            StatusLabel.Text = state.ToString();
-            
-            switch (state)
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                case ConnectionState.Connected:
-                    StatusLabel.TextColor = Colors.Green;
-                    break;
-                case ConnectionState.Connecting:
-                    StatusLabel.TextColor = Colors.Orange;
-                    break;
-                case ConnectionState.Error:
-                    StatusLabel.TextColor = Colors.Red;
-                    break;
-                default:
-                    StatusLabel.TextColor = Colors.Gray;
-                    ConnectionInfoLabel.Text = string.Empty;
-                    break;
-            }
-        });
+                try
+                {
+                    StatusLabel.Text = state.ToString();
+                    
+                    switch (state)
+                    {
+                        case ConnectionState.Connected:
+                            StatusLabel.TextColor = Colors.Green;
+                            break;
+                        case ConnectionState.Connecting:
+                            StatusLabel.TextColor = Colors.Orange;
+                            break;
+                        case ConnectionState.Error:
+                            StatusLabel.TextColor = Colors.Red;
+                            break;
+                        default:
+                            StatusLabel.TextColor = Colors.Gray;
+                            ConnectionInfoLabel.Text = string.Empty;
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating connection status UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnConnectionStateChanged event handler");
+        }
     }
     
     private void UpdateDeviceCount()
     {
-        DeviceCountLabel.Text = _devices.Count == 1 ? "1 device" : $"{_devices.Count} devices";
+        try
+        {
+            var count = _devices?.Count ?? 0;
+            DeviceCountLabel.Text = count == 1 ? "1 device" : $"{count} devices";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating device count display");
+            DeviceCountLabel.Text = "0 devices"; // Fallback
+        }
     }
 }

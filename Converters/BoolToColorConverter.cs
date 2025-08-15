@@ -15,7 +15,16 @@ public class BoolToColorConverter : IValueConverter
                 var falseColor = colorParts[1];
                 
                 var colorName = boolValue ? trueColor : falseColor;
-                return Color.FromArgb(colorName);
+                
+                try
+                {
+                    return Color.FromArgb(colorName);
+                }
+                catch (ArgumentException)
+                {
+                    // Invalid color name, return default
+                    return Colors.Gray;
+                }
             }
         }
         
@@ -24,6 +33,8 @@ public class BoolToColorConverter : IValueConverter
     
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // This converter is one-way only, so conversion back is not supported
+        // Return a safe default value instead of throwing
+        return false;
     }
 }

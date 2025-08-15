@@ -172,7 +172,17 @@ public class DeviceDiscoveryService : IDeviceDiscoveryService
             DeviceDiscovered?.Invoke(this, device);
             
             // Test connection in background
-            _ = Task.Run(async () => await RefreshDeviceAsync(device));
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await RefreshDeviceAsync(device);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error refreshing device {DeviceId} in background", device.DeviceId);
+                }
+            });
         }
     }
     

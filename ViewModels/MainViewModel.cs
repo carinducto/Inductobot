@@ -115,7 +115,7 @@ public class MainViewModel : BaseViewModel
             var devices = _deviceDiscoveryService.DiscoveredDevices;
             if (devices.Any())
             {
-                SelectedDevice = devices.First();
+                SelectedDevice = devices.FirstOrDefault();
                 StatusMessage = $"Found {devices.Count} device(s)";
             }
             else
@@ -127,19 +127,40 @@ public class MainViewModel : BaseViewModel
     
     private async Task NavigateToMeasurementsAsync()
     {
-        await NavigationService.NavigateToAsync("measurements", 
-            new Dictionary<string, object> { { "deviceId", SelectedDevice?.DeviceId ?? "" } });
+        try
+        {
+            await NavigationService.NavigateToAsync("measurements", 
+                new Dictionary<string, object> { { "deviceId", SelectedDevice?.DeviceId ?? "" } });
+        }
+        catch (Exception ex)
+        {
+            MessagingService.Send(new ErrorMessage("Navigation Failed", $"Navigation operation failed: {ex.Message}", ex));
+        }
     }
     
     private async Task NavigateToTestingAsync()
     {
-        await NavigationService.NavigateToAsync("testing",
-            new Dictionary<string, object> { { "deviceId", SelectedDevice?.DeviceId ?? "" } });
+        try
+        {
+            await NavigationService.NavigateToAsync("testing",
+                new Dictionary<string, object> { { "deviceId", SelectedDevice?.DeviceId ?? "" } });
+        }
+        catch (Exception ex)
+        {
+            MessagingService.Send(new ErrorMessage("Navigation Failed", $"Navigation operation failed: {ex.Message}", ex));
+        }
     }
     
     private async Task NavigateToSettingsAsync()
     {
-        await NavigationService.NavigateToAsync("settings");
+        try
+        {
+            await NavigationService.NavigateToAsync("settings");
+        }
+        catch (Exception ex)
+        {
+            MessagingService.Send(new ErrorMessage("Navigation Failed", $"Navigation operation failed: {ex.Message}", ex));
+        }
     }
     
     private void OnConnectionStateChanged(object? sender, ConnectionState state)
