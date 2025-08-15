@@ -13,6 +13,7 @@ namespace Inductobot.Services.Discovery;
 public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
 {
     private readonly IUasWandDeviceService _deviceService;
+    private readonly IUasWandSimulatorService _simulatorService;
     private readonly ILogger<UasWandDiscoveryService> _logger;
     private readonly List<UASDeviceInfo> _discoveredDevices = new();
     private CancellationTokenSource? _scanCts;
@@ -28,9 +29,10 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
     // Common ports used by UAS-WAND devices
     private readonly int[] _commonPorts = { 80, 443, 8080, 8443, 5000, 5001, 7000, 7001 };
     
-    public UasWandDiscoveryService(IUasWandDeviceService deviceService, ILogger<UasWandDiscoveryService> logger)
+    public UasWandDiscoveryService(IUasWandDeviceService deviceService, IUasWandSimulatorService simulatorService, ILogger<UasWandDiscoveryService> logger)
     {
         _deviceService = deviceService;
+        _simulatorService = simulatorService;
         _logger = logger;
     }
     
@@ -51,7 +53,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         
         try
         {
-            await ScanNetworkForDevicesAsync(_scanCts.Token);
+            await ScanForDevicesAsync(_scanCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -93,6 +95,17 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         }
     }
     
+    public async Task ForceDiscoverSimulatorAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Forcing simulator discovery check");
+        await CheckForSimulatorAsync(cancellationToken);
+    }
+
+    public int GetDeviceDiscoveredSubscriberCount()
+    {
+        return DeviceDiscovered?.GetInvocationList()?.Length ?? 0;
+    }
+
     public async Task RefreshDeviceAsync(UASDeviceInfo device, CancellationToken cancellationToken = default)
     {
         try
@@ -243,6 +256,90 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to clear devices");
+        }
+    }
+    
+    private async Task ScanForDevicesAsync(CancellationToken cancellationToken)
+    {
+        // First, check for running simulator
+        await CheckForSimulatorAsync(cancellationToken);
+        
+        if (cancellationToken.IsCancellationRequested)
+            return;
+        
+        // Then scan the network for physical devices
+        await ScanNetworkForDevicesAsync(cancellationToken);
+    }
+    
+    private async Task CheckForSimulatorAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var status = _simulatorService.GetStatus();
+            
+            if (status.IsRunning)
+            {
+                _logger.LogInformation("Found running UAS-WAND simulator at {Address}:{Port}", status.IPAddress, status.Port);
+                
+                var simulatorDevice = new UASDeviceInfo
+                {
+                    DeviceId = "UAS-WAND-SIMULATOR",
+                    IpAddress = status.IPAddress ?? "127.0.0.1",
+                    Port = status.Port,
+                    Name = status.DeviceName ?? "UAS-WAND_Simulator",
+                    FirmwareVersion = status.FirmwareVersion,
+                    SerialNumber = "SIM-001",
+                    Type = Models.Device.DeviceType.Simulator,
+                    IsOnline = true,
+                    LastSeen = DateTime.Now,
+                    DeviceType = "Simulator"
+                };
+                
+                await _devicesLock.WaitAsync(cancellationToken);
+                try
+                {
+                    // Remove any existing simulator entry
+                    var existingSimulator = _discoveredDevices.FirstOrDefault(d => d.DeviceId == "UAS-WAND-SIMULATOR");
+                    if (existingSimulator != null)
+                    {
+                        _discoveredDevices.Remove(existingSimulator);
+                    }
+                    
+                    // Add current simulator
+                    _discoveredDevices.Add(simulatorDevice);
+                    _logger.LogInformation("About to invoke DeviceDiscovered event for simulator. Subscribers: {Count}", 
+                        DeviceDiscovered?.GetInvocationList()?.Length ?? 0);
+                    DeviceDiscovered?.Invoke(this, simulatorDevice);
+                    _logger.LogInformation("DeviceDiscovered event invoked for UAS-WAND simulator");
+                }
+                finally
+                {
+                    _devicesLock.Release();
+                }
+            }
+            else
+            {
+                // Remove simulator if it was previously discovered but is no longer running
+                await _devicesLock.WaitAsync(cancellationToken);
+                try
+                {
+                    var existingSimulator = _discoveredDevices.FirstOrDefault(d => d.DeviceId == "UAS-WAND-SIMULATOR");
+                    if (existingSimulator != null)
+                    {
+                        _discoveredDevices.Remove(existingSimulator);
+                        DeviceRemoved?.Invoke(this, existingSimulator);
+                        _logger.LogInformation("Removed stopped UAS-WAND simulator from discovered devices");
+                    }
+                }
+                finally
+                {
+                    _devicesLock.Release();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking for simulator during discovery");
         }
     }
     

@@ -48,6 +48,16 @@ public interface IUasWandDiscoveryService
     Task<bool> TestConnectionAsync(UASDeviceInfo device, CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Force check for running simulator and add to discovered devices
+    /// </summary>
+    Task ForceDiscoverSimulatorAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get count of event subscribers for debugging
+    /// </summary>
+    int GetDeviceDiscoveredSubscriberCount();
+    
+    /// <summary>
     /// Refresh information for a specific device
     /// </summary>
     Task RefreshDeviceAsync(UASDeviceInfo device, CancellationToken cancellationToken = default);

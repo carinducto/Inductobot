@@ -1,4 +1,5 @@
 ﻿using Inductobot.ViewModels;
+using Inductobot.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Inductobot;
@@ -6,19 +7,23 @@ namespace Inductobot;
 public partial class MainPage : ContentPage
 {
     private readonly UasWandControlViewModel _viewModel;
+    private readonly SimulatorControlViewModel _simulatorViewModel;
     private readonly ILogger<MainPage> _logger;
 
-    public MainPage(UasWandControlViewModel viewModel, ILogger<MainPage> logger)
+    public MainPage(UasWandControlViewModel viewModel, SimulatorControlViewModel simulatorViewModel, ILogger<MainPage> logger)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _simulatorViewModel = simulatorViewModel;
         _logger = logger;
         BindingContext = _viewModel;
         
         // Subscribe to ViewModel property changes
         _viewModel.PropertyChanged += OnPropertyChanged;
+        _simulatorViewModel.PropertyChanged += OnSimulatorPropertyChanged;
         
         UpdateConnectionUI();
+        UpdateSimulatorUI();
     }
 
     protected override void OnDisappearing()
@@ -28,6 +33,11 @@ public partial class MainPage : ContentPage
         {
             _viewModel.PropertyChanged -= OnPropertyChanged;
             _viewModel.Dispose();
+        }
+        
+        if (_simulatorViewModel != null)
+        {
+            _simulatorViewModel.PropertyChanged -= OnSimulatorPropertyChanged;
         }
     }
 
@@ -297,4 +307,86 @@ public partial class MainPage : ContentPage
             await DisplayAlert("Error", ex.Message, "OK");
         }
     }
+
+    #region Simulator Controls
+
+    private void OnSimulatorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        UpdateSimulatorUI();
+    }
+
+    private void UpdateSimulatorUI()
+    {
+        try
+        {
+            var status = _simulatorViewModel.Status;
+            var isRunning = _simulatorViewModel.IsRunning;
+
+            // Update status indicator
+            var indicator = SimulatorStatusIndicator.Fill as SolidColorBrush;
+            if (indicator != null)
+            {
+                indicator.Color = isRunning ? Colors.Green : Colors.Gray;
+            }
+
+            // Update status text
+            SimulatorStatusLabel.Text = _simulatorViewModel.StatusMessage;
+
+            // Update buttons
+            StartSimulatorButton.IsEnabled = !isRunning && !_simulatorViewModel.IsLoading;
+            StopSimulatorButton.IsEnabled = isRunning && !_simulatorViewModel.IsLoading;
+            StartSimulatorButton.Text = _simulatorViewModel.StartButtonText;
+
+            // Update info display
+            if (status != null)
+            {
+                SimulatorInfoLabel.Text = $"Device: {status.DeviceName}\n" +
+                                        $"Address: {status.IPAddress}:{status.Port}\n" +
+                                        $"Firmware: {status.FirmwareVersion}\n" +
+                                        $"Started: {status.StartTime?.ToString("HH:mm:ss") ?? "N/A"}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating simulator UI");
+        }
+    }
+
+    private async void OnStartSimulatorClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            if (_simulatorViewModel.StartCommand.CanExecute(null))
+            {
+                _simulatorViewModel.StartCommand.Execute(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting simulator");
+            await DisplayAlert("Error", $"Failed to start simulator: {ex.Message}", "OK");
+        }
+    }
+
+    private async void OnStopSimulatorClicked(object sender, EventArgs e)
+    {
+        var confirm = await DisplayAlert("Confirm", "Stop the UAS-WAND simulator?", "Yes", "No");
+        if (!confirm) return;
+
+        try
+        {
+            if (_simulatorViewModel.StopCommand.CanExecute(null))
+            {
+                _simulatorViewModel.StopCommand.Execute(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping simulator");
+            await DisplayAlert("Error", $"Failed to stop simulator: {ex.Message}", "OK");
+        }
+    }
+
+    #endregion
+
 }

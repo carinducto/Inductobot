@@ -51,6 +51,54 @@
         <ScrollView Grid.Row="1" Margin="0,10">
             <VerticalStackLayout Spacing="20">
                 
+                <!-- Simulator Control Panel -->
+                <Frame BackgroundColor="{AppThemeBinding Light=#FFF8DC, Dark=#2A2A1A}"
+                       BorderColor="{AppThemeBinding Light=#FFD700, Dark=#FFD700}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="🔧 UAS-WAND Simulator" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="15" RowSpacing="10">
+                            <!-- Status Display -->
+                            <StackLayout Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="10">
+                                <Label Text="Status:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                                <Ellipse WidthRequest="12" HeightRequest="12" x:Name="SimulatorStatusIndicator" VerticalOptions="Center">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush Color="Gray"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <Label x:Name="SimulatorStatusLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
+                            </StackLayout>
+                            
+                            <!-- Control Buttons -->
+                            <Button x:Name="StartSimulatorButton"
+                                  Text="Start Simulator" 
+                                  Clicked="OnStartSimulatorClicked"
+                                  BackgroundColor="Green"
+                                  TextColor="White"
+                                  Grid.Column="0" Grid.Row="1"/>
+                            
+                            <Button x:Name="StopSimulatorButton"
+                                  Text="Stop Simulator" 
+                                  Clicked="OnStopSimulatorClicked"
+                                  BackgroundColor="Red"
+                                  TextColor="White"
+                                  Grid.Column="1" Grid.Row="1"/>
+                            
+                            <!-- Info Display -->
+                            <StackLayout Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="2" Spacing="5">
+                                <Label x:Name="SimulatorInfoLabel" 
+                                     FontFamily="Monospace" 
+                                     FontSize="12" 
+                                     TextColor="Gray" 
+                                     Text="Simulator info will appear here..."/>
+                            </StackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+                
                 <!-- Device Information Panel -->
                 <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
                        BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"

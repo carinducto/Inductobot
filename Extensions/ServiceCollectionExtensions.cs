@@ -128,8 +128,10 @@ public class MockUasWandDiscoveryService : IUasWandDiscoveryService
     public Task StartScanAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public void StopScan() { }
     public Task<bool> TestConnectionAsync(Models.Device.UASDeviceInfo device, CancellationToken cancellationToken = default) => Task.FromResult(true);
+    public Task ForceDiscoverSimulatorAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RefreshDeviceAsync(Models.Device.UASDeviceInfo device, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<bool> AddDeviceManuallyAsync(string ipAddress, int port, CancellationToken cancellationToken = default) => Task.FromResult(true);
     public void RemoveDevice(Models.Device.UASDeviceInfo device) { }
     public void ClearDevices() { }
+    public int GetDeviceDiscoveredSubscriberCount() => DeviceDiscovered?.GetInvocationList()?.Length ?? 0;
 }

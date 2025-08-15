@@ -1,6 +1,8 @@
 using Inductobot.Models.Device;
 using Inductobot.Abstractions.Services;
+using Inductobot.Services.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 
 namespace Inductobot.Views;
@@ -9,23 +11,56 @@ public partial class DeviceConnectionPage : ContentPage
 {
     private readonly IUasWandDiscoveryService _discoveryService;
     private readonly IUasWandDeviceService _deviceService;
+    private readonly INetworkInfoService _networkInfoService;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
     private CancellationTokenSource? _connectionCts;
     private CancellationTokenSource? _scanCts;
     
+    // Constructor for dependency injection
     public DeviceConnectionPage(
         IUasWandDiscoveryService discoveryService,
         IUasWandDeviceService deviceService,
+        INetworkInfoService networkInfoService,
         ILogger<DeviceConnectionPage> logger)
     {
         InitializeComponent();
         _discoveryService = discoveryService;
         _deviceService = deviceService;
+        _networkInfoService = networkInfoService;
         _logger = logger;
+        
+        _logger.LogInformation("DeviceConnectionPage DI constructor called");
+        
+        InitializePage();
+    }
+
+    // Parameterless constructor for XAML DataTemplate (manually resolve dependencies)
+    public DeviceConnectionPage() : this(
+        GetService<IUasWandDiscoveryService>(),
+        GetService<IUasWandDeviceService>(),
+        GetService<INetworkInfoService>(),
+        GetService<ILogger<DeviceConnectionPage>>())
+    {
+    }
+
+    private static T GetService<T>() where T : class
+    {
+        if (Application.Current?.Handler?.MauiContext?.Services?.GetService<T>() is T service)
+            return service;
+        
+        throw new InvalidOperationException($"Service {typeof(T).Name} not found");
+    }
+
+    private void InitializePage()
+    {
+        _logger.LogInformation("DeviceConnectionPage initialization starting");
         
         InitializeUI();
         SubscribeToEvents();
+        _ = UpdateNetworkInfoAsync();
+        
+        _logger.LogInformation("DeviceConnectionPage initialization complete. Devices collection count: {Count}", _devices.Count);
     }
     
     private void InitializeUI()
@@ -36,24 +71,72 @@ public partial class DeviceConnectionPage : ContentPage
     
     private void SubscribeToEvents()
     {
+        _logger.LogInformation("Subscribing to discovery service events");
+        
         _discoveryService.DeviceDiscovered += OnDeviceDiscovered;
         _discoveryService.DeviceRemoved += OnDeviceRemoved;
         _discoveryService.ScanningStateChanged += OnScanningStateChanged;
         _deviceService.ConnectionStateChanged += OnConnectionStateChanged;
+        
+        _logger.LogInformation("Event subscriptions complete");
+        _logger.LogInformation("DeviceDiscovered event subscriber count: {Count}", _discoveryService.GetDeviceDiscoveredSubscriberCount());
+        
+        // Check for any existing discovered devices
+        var existingDevices = _discoveryService.DiscoveredDevices;
+        _logger.LogInformation("Found {Count} existing discovered devices", existingDevices.Count);
+        
+        foreach (var device in existingDevices)
+        {
+            _logger.LogInformation("Existing device: {DeviceName} at {IpAddress}:{Port}", 
+                device.Name, device.IpAddress, device.Port);
+            
+            if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
+            {
+                _devices.Add(device);
+                _logger.LogInformation("Added existing device to UI: {DeviceName}", device.Name);
+            }
+        }
+        
+        _logger.LogInformation("After adding existing devices, UI collection count: {Count}", _devices.Count);
+        UpdateDeviceCount();
+        
+        // Also force a simulator check since the hosted service may have started it already
+        Task.Run(async () =>
+        {
+            try
+            {
+                _logger.LogInformation("Forcing initial simulator discovery check");
+                await _discoveryService.ForceDiscoverSimulatorAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during initial simulator discovery check");
+            }
+        });
     }
     
     private void OnDeviceDiscovered(object? sender, UASDeviceInfo device)
     {
         try
         {
+            _logger.LogInformation("OnDeviceDiscovered called for device: {DeviceName} at {IpAddress}:{Port}", 
+                device.Name, device.IpAddress, device.Port);
+            
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 try
                 {
+                    _logger.LogInformation("UI thread processing device: {DeviceName}", device.Name);
+                    
                     if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
                     {
                         _devices.Add(device);
+                        _logger.LogInformation("Added device to UI collection. Total devices: {Count}", _devices.Count);
                         UpdateDeviceCount();
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Device already exists in UI collection: {DeviceName}", device.Name);
                     }
                 }
                 catch (Exception ex)
@@ -519,4 +602,112 @@ public partial class DeviceConnectionPage : ContentPage
             DeviceCountLabel.Text = "0 devices"; // Fallback
         }
     }
+
+    #region Network Information
+
+    private async Task UpdateNetworkInfoAsync()
+    {
+        try
+        {
+            await Task.Run(() =>
+            {
+                var networkInfo = _networkInfoService.GetCurrentNetworkInfo();
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    try
+                    {
+                        if (networkInfo.IsConnected)
+                        {
+                            GatewayAddressLabel.Text = networkInfo.GatewayAddress ?? "Unknown";
+                            IPRangeLabel.Text = networkInfo.IPRange ?? "Unknown";
+                            NetworkInterfaceLabel.Text = $"{networkInfo.InterfaceName} ({networkInfo.LocalIPAddress})";
+                        }
+                        else
+                        {
+                            GatewayAddressLabel.Text = "Not Connected";
+                            IPRangeLabel.Text = "Not Connected";
+                            NetworkInterfaceLabel.Text = networkInfo.ErrorMessage ?? "Network Error";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating network UI elements");
+                        GatewayAddressLabel.Text = "Error";
+                        IPRangeLabel.Text = "Error";
+                        NetworkInterfaceLabel.Text = "Error";
+                    }
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting network information");
+            
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                GatewayAddressLabel.Text = "Error";
+                IPRangeLabel.Text = "Error";
+                NetworkInterfaceLabel.Text = "Network Error";
+            });
+        }
+    }
+
+    private async void OnRefreshNetworkClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            // Show loading state
+            GatewayAddressLabel.Text = "Loading...";
+            IPRangeLabel.Text = "Loading...";
+            NetworkInterfaceLabel.Text = "Loading...";
+
+            await UpdateNetworkInfoAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing network information");
+            await SafeDisplayAlert("Error", $"Failed to refresh network information: {ex.Message}", "OK");
+        }
+    }
+
+    #endregion
+
+    #region Debug Methods
+
+    private async void OnCheckSimulatorClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            _logger.LogInformation("Manual simulator discovery check triggered");
+            _logger.LogInformation("Current devices in UI collection: {Count}", _devices.Count);
+            _logger.LogInformation("DeviceDiscovered event has {Count} subscribers", _discoveryService.GetDeviceDiscoveredSubscriberCount());
+            
+            // Force add a test device to verify UI binding works
+            var testDevice = new UASDeviceInfo
+            {
+                DeviceId = "TEST-UI-DEVICE",
+                Name = "UI Test Device",
+                IpAddress = "127.0.0.1",
+                Port = 9999,
+                IsOnline = true,
+                DeviceType = "Test"
+            };
+            
+            _logger.LogInformation("Adding test device to UI collection");
+            _devices.Add(testDevice);
+            _logger.LogInformation("Test device added. New collection count: {Count}", _devices.Count);
+            UpdateDeviceCount();
+            
+            await _discoveryService.ForceDiscoverSimulatorAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during manual simulator check");
+            await SafeDisplayAlert("Error", $"Failed to check for simulator: {ex.Message}", "OK");
+        }
+    }
+
+    #endregion
+
 }

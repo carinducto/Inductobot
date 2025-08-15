@@ -143,21 +143,59 @@ public class SimulatedUasWandDevice : IDisposable
             using (client)
             using (var stream = client.GetStream())
             {
-                var buffer = new byte[4096];
-                
                 while (!cancellationToken.IsCancellationRequested && client.Connected)
                 {
-                    var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    // Read data length prefix (4 bytes)
+                    var lengthBytes = new byte[4];
+                    var bytesRead = await stream.ReadAsync(lengthBytes, 0, 4, cancellationToken);
                     if (bytesRead == 0)
                         break;
                     
-                    var command = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
+                    if (bytesRead != 4)
+                    {
+                        _logger.LogWarning("Incomplete length prefix received from client {Endpoint}", clientEndpoint);
+                        break;
+                    }
+                    
+                    var dataLength = BitConverter.ToInt32(lengthBytes);
+                    if (dataLength < 0 || dataLength > 10 * 1024 * 1024)
+                    {
+                        _logger.LogWarning("Invalid data length {Length} from client {Endpoint}", dataLength, clientEndpoint);
+                        break;
+                    }
+                    
+                    // Read the actual command data
+                    var commandBytes = new byte[dataLength];
+                    var totalRead = 0;
+                    while (totalRead < dataLength)
+                    {
+                        var remaining = dataLength - totalRead;
+                        var chunkRead = await stream.ReadAsync(commandBytes, totalRead, remaining, cancellationToken);
+                        if (chunkRead == 0)
+                            break;
+                        totalRead += chunkRead;
+                    }
+                    
+                    if (totalRead != dataLength)
+                    {
+                        _logger.LogWarning("Incomplete command data received from client {Endpoint}", clientEndpoint);
+                        break;
+                    }
+                    
+                    var command = Encoding.UTF8.GetString(commandBytes).Trim();
                     _logger.LogDebug("Simulated UAS-WAND received command: {Command}", command);
                     
                     var response = ProcessCommand(command);
                     var responseBytes = Encoding.UTF8.GetBytes(response);
                     
+                    // Send response length prefix
+                    var responseLengthBytes = BitConverter.GetBytes(responseBytes.Length);
+                    await stream.WriteAsync(responseLengthBytes, 0, 4, cancellationToken);
+                    
+                    // Send response data
                     await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancellationToken);
+                    await stream.FlushAsync(cancellationToken);
+                    
                     _logger.LogDebug("Simulated UAS-WAND sent response: {Response}", response);
                 }
             }
@@ -179,6 +217,7 @@ public class SimulatedUasWandDevice : IDisposable
             
             return command.ToUpperInvariant() switch
             {
+                "PING" => HandlePing(),
                 var cmd when cmd.Contains("GET") && cmd.Contains("INFO") => HandleGetDeviceInfo(),
                 var cmd when cmd.Contains("KEEP") && cmd.Contains("ALIVE") => HandleKeepAlive(),
                 var cmd when cmd.Contains("GET") && cmd.Contains("WIFI") => HandleGetWifiSettings(),
@@ -325,6 +364,15 @@ public class SimulatedUasWandDevice : IDisposable
                 data = dataPoints,
                 timestamp = DateTime.Now
             }
+        });
+    }
+
+    private string HandlePing()
+    {
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            data = new CodedResponse { Code = 0, Message = "pong" }
         });
     }
 

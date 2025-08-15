@@ -13,13 +13,14 @@ public class UASDeviceInfo
     public DateTime LastSeen { get; set; }
     public bool IsOnline { get; set; }
     public Dictionary<string, object> CustomProperties { get; set; } = new();
+    
+    // Additional property for UI display purposes
+    public string? DeviceType { get; set; }
 }
 
 public enum DeviceType
 {
     WandV3,
-    IndustrialSensor,
-    TemperatureSensor,
-    PressureSensor,
+    Simulator,
     Custom
 }

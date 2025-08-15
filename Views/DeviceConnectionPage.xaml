@@ -47,123 +47,168 @@
             </Frame>
         </VerticalStackLayout>
         
-        <!-- Device List Section -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,10">
-            
-            <!-- Scan Controls -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,0,0,10">
-                <Label Text="Discovered Devices" 
-                       FontSize="20" 
-                       FontAttributes="Bold"
-                       VerticalOptions="Center"/>
+        <!-- Content Section -->
+        <ScrollView Grid.Row="1" Margin="0,10">
+            <VerticalStackLayout Spacing="20">
                 
-                <ActivityIndicator x:Name="ScanIndicator" 
-                                 IsRunning="False"
-                                 WidthRequest="20"
-                                 HeightRequest="20"
-                                 Grid.Column="1"/>
-                
-                <Button x:Name="ScanButton"
-                        Text="Scan Network"
-                        Clicked="OnScanNetworkClicked"
-                        Grid.Column="2"/>
-            </Grid>
-            
-            <!-- Device List -->
-            <CollectionView x:Name="DeviceList" 
-                          Grid.Row="1"
-                          SelectionMode="Single"
-                          SelectionChanged="OnDeviceSelected">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="models:UASDeviceInfo">
-                        <Border Margin="0,5" 
-                                Padding="15"
-                                BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
-                                Stroke="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
-                                StrokeThickness="1">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnDeviceTapped"/>
-                            </Border.GestureRecognizers>
+                <!-- Network Information Panel -->
+                <Frame BackgroundColor="{AppThemeBinding Light=#E6F3FF, Dark=#1A1A2E}"
+                       BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="🌐 Network Information" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                            <Label Grid.Column="0" Grid.Row="0" Text="Gateway:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Label Grid.Column="1" Grid.Row="0" x:Name="GatewayAddressLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
                             
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                                <!-- Status Indicator -->
-                                <Ellipse Grid.Column="0"
-                                       WidthRequest="12"
-                                       HeightRequest="12"
-                                       VerticalOptions="Center">
-                                    <Ellipse.Fill>
-                                        <SolidColorBrush Color="{Binding IsOnline, Converter={StaticResource BoolToColorConverter}, ConverterParameter=Green|Red}"/>
-                                    </Ellipse.Fill>
-                                </Ellipse>
-                                
-                                <!-- Device Info -->
-                                <VerticalStackLayout Grid.Column="1" Spacing="5">
-                                    <Label Text="{Binding Name}" 
-                                         FontSize="16" 
-                                         FontAttributes="Bold"/>
-                                    
-                                    <Label FontSize="14" TextColor="Gray">
-                                        <Label.FormattedText>
-                                            <FormattedString>
-                                                <Span Text="{Binding IpAddress}"/>
-                                                <Span Text=":"/>
-                                                <Span Text="{Binding Port}"/>
-                                            </FormattedString>
-                                        </Label.FormattedText>
-                                    </Label>
-                                    
-                                    <Label Text="{Binding FirmwareVersion, StringFormat='Firmware: {0}'}" 
-                                         FontSize="12" 
-                                         TextColor="Gray"
-                                         IsVisible="{Binding FirmwareVersion, Converter={StaticResource NotNullConverter}}"/>
-                                    
-                                    <Label Text="{Binding SerialNumber, StringFormat='S/N: {0}'}" 
-                                         FontSize="12" 
-                                         TextColor="Gray"
-                                         IsVisible="{Binding SerialNumber, Converter={StaticResource NotNullConverter}}"/>
-                                </VerticalStackLayout>
-                                
-                                <!-- Action Buttons -->
-                                <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Center">
-                                    <Button Text="Connect" 
-                                          Clicked="OnConnectDeviceClicked"
-                                          CommandParameter="{Binding .}"
-                                          WidthRequest="80"
-                                          HeightRequest="35"
-                                          FontSize="12"/>
-                                    
-                                    <Button Text="Remove" 
-                                          Clicked="OnRemoveDeviceClicked"
-                                          CommandParameter="{Binding .}"
-                                          BackgroundColor="Red"
-                                          WidthRequest="80"
-                                          HeightRequest="35"
-                                          FontSize="12"/>
-                                </HorizontalStackLayout>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-                
-                <CollectionView.EmptyView>
-                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="10">
-                        <Image Source="dotnet_bot.png" 
-                             WidthRequest="100" 
-                             HeightRequest="100" 
-                             Opacity="0.5"/>
-                        <Label Text="No devices found" 
-                             FontSize="18" 
-                             TextColor="Gray"
-                             HorizontalOptions="Center"/>
-                        <Label Text="Click 'Scan Network' to discover devices or add one manually"
-                             FontSize="14" 
-                             TextColor="Gray"
-                             HorizontalOptions="Center"
-                             HorizontalTextAlignment="Center"/>
+                            <Label Grid.Column="0" Grid.Row="1" Text="IP Range:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Label Grid.Column="1" Grid.Row="1" x:Name="IPRangeLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="2" Text="Interface:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Label Grid.Column="1" Grid.Row="2" x:Name="NetworkInterfaceLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
+                        </Grid>
+                        
+                        <Button Text="Refresh Network Info" 
+                              x:Name="RefreshNetworkButton"
+                              Clicked="OnRefreshNetworkClicked"
+                              BackgroundColor="#4A90E2"
+                              TextColor="White"/>
                     </VerticalStackLayout>
-                </CollectionView.EmptyView>
-            </CollectionView>
-        </Grid>
+                </Frame>
+
+                <!-- Device Discovery Section -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <!-- Scan Controls -->
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
+                            <Label Text="Discovered Devices" 
+                                   FontSize="20" 
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                            
+                            <ActivityIndicator x:Name="ScanIndicator" 
+                                             IsRunning="False"
+                                             WidthRequest="20"
+                                             HeightRequest="20"
+                                             Grid.Column="1"/>
+                            
+                            <Button x:Name="CheckSimulatorButton"
+                                    Text="Find Simulator"
+                                    Clicked="OnCheckSimulatorClicked"
+                                    BackgroundColor="#FFD700"
+                                    TextColor="Black"
+                                    FontSize="12"
+                                    Grid.Column="2"/>
+                            
+                            <Button x:Name="ScanButton"
+                                    Text="Scan Network"
+                                    Clicked="OnScanNetworkClicked"
+                                    Grid.Column="3"/>
+                        </Grid>
+                        
+                        <!-- Device List -->
+                        <CollectionView x:Name="DeviceList" 
+                                      HeightRequest="300"
+                                      SelectionMode="Single"
+                                      SelectionChanged="OnDeviceSelected">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:UASDeviceInfo">
+                                    <Border Margin="0,5" 
+                                            Padding="15"
+                                            BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#2A2A2A}"
+                                            Stroke="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                                            StrokeThickness="1">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnDeviceTapped"/>
+                                        </Border.GestureRecognizers>
+                                        
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
+                                            <!-- Status Indicator -->
+                                            <Ellipse Grid.Column="0"
+                                                   WidthRequest="12"
+                                                   HeightRequest="12"
+                                                   VerticalOptions="Center">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush Color="{Binding IsOnline, Converter={StaticResource BoolToColorConverter}, ConverterParameter=Green|Red}"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            
+                                            <!-- Device Info -->
+                                            <VerticalStackLayout Grid.Column="1" Spacing="5">
+                                                <Label Text="{Binding Name}" 
+                                                     FontSize="16" 
+                                                     FontAttributes="Bold"/>
+                                                
+                                                <Label FontSize="14" TextColor="Gray">
+                                                    <Label.FormattedText>
+                                                        <FormattedString>
+                                                            <Span Text="{Binding IpAddress}"/>
+                                                            <Span Text=":"/>
+                                                            <Span Text="{Binding Port}"/>
+                                                        </FormattedString>
+                                                    </Label.FormattedText>
+                                                </Label>
+                                                
+                                                <Label Text="{Binding FirmwareVersion, StringFormat='Firmware: {0}'}" 
+                                                     FontSize="12" 
+                                                     TextColor="Gray"
+                                                     IsVisible="{Binding FirmwareVersion, Converter={StaticResource NotNullConverter}}"/>
+                                                
+                                                <Label Text="{Binding SerialNumber, StringFormat='S/N: {0}'}" 
+                                                     FontSize="12" 
+                                                     TextColor="Gray"
+                                                     IsVisible="{Binding SerialNumber, Converter={StaticResource NotNullConverter}}"/>
+                                            </VerticalStackLayout>
+                                            
+                                            <!-- Action Buttons -->
+                                            <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Center">
+                                                <Button Text="Connect" 
+                                                      Clicked="OnConnectDeviceClicked"
+                                                      CommandParameter="{Binding .}"
+                                                      WidthRequest="80"
+                                                      HeightRequest="35"
+                                                      FontSize="12"/>
+                                                
+                                                <Button Text="Remove" 
+                                                      Clicked="OnRemoveDeviceClicked"
+                                                      CommandParameter="{Binding .}"
+                                                      BackgroundColor="Red"
+                                                      WidthRequest="80"
+                                                      HeightRequest="35"
+                                                      FontSize="12"/>
+                                            </HorizontalStackLayout>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                            
+                            <CollectionView.EmptyView>
+                                <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Margin="20">
+                                    <Image Source="dotnet_bot.png" 
+                                         WidthRequest="80" 
+                                         HeightRequest="80" 
+                                         Opacity="0.5"/>
+                                    <Label Text="No devices found" 
+                                         FontSize="16" 
+                                         TextColor="Gray"
+                                         HorizontalOptions="Center"/>
+                                    <Label Text="Click 'Scan Network' to discover devices or add one manually"
+                                         FontSize="12" 
+                                         TextColor="Gray"
+                                         HorizontalOptions="Center"
+                                         HorizontalTextAlignment="Center"/>
+                                </VerticalStackLayout>
+                            </CollectionView.EmptyView>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Frame>
+            </VerticalStackLayout>
+        </ScrollView>
         
         <!-- Status Bar -->
         <Frame Grid.Row="2" 
