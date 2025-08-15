@@ -3,6 +3,7 @@ using Inductobot.Extensions;
 using Inductobot.Services.Core;
 using Inductobot.Services.Data;
 using Inductobot.Services.Device;
+using Inductobot.Services.Simulation;
 using Inductobot.ViewModels;
 using Inductobot.Views;
 
@@ -21,12 +22,17 @@ public static class MauiProgram
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 			});
 
+		// UAS-WAND simulator will use hardcoded configuration for simplicity
+
 		// Register UAS-WAND Services - Modular architecture with clean separation
 		builder.Services.AddUasWandServices();
 		
 		// Register Core Services
 		builder.Services.AddSingleton<IMessagingService, MessagingService>();
 		builder.Services.AddSingleton<INavigationService, NavigationService>();
+		
+		// Register UAS-WAND Simulator (for testing without real device)
+		builder.Services.AddHostedService<UasWandSimulatorService>();
 		
 		// Register ViewModels - Transient (new instance each time)
 		builder.Services.AddTransient<MainViewModel>();
