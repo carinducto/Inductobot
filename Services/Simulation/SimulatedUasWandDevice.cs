@@ -9,7 +9,19 @@ using Inductobot.Models.Commands;
 namespace Inductobot.Services.Simulation;
 
 /// <summary>
-/// Simulated UAS-WAND device that responds to TCP commands like a real device
+/// Represents an HTTP-style command received over TCP
+/// </summary>
+public class HttpCommand
+{
+    public string Endpoint { get; set; } = "";
+    public string Method { get; set; } = "";
+    public object? Payload { get; set; }
+}
+
+/// <summary>
+/// Simulated UAS-WAND device that responds to HTTP-style JSON commands over TCP.
+/// Protocol: Expects {"endpoint": "/path", "method": "GET|POST", "payload": {...}} format.
+/// Security: Only accepts connections from localhost (127.0.0.1) for safety.
 /// </summary>
 public class SimulatedUasWandDevice : IDisposable
 {
@@ -66,14 +78,14 @@ public class SimulatedUasWandDevice : IDisposable
 
         try
         {
-            _tcpListener = new TcpListener(IPAddress.Any, _port);
+            _tcpListener = new TcpListener(IPAddress.Loopback, _port);
             _tcpListener.Start();
             
             _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _listenerTask = AcceptClientsAsync(_cancellationTokenSource.Token);
             
             IsRunning = true;
-            _logger.LogInformation("Simulated UAS-WAND device started on port {Port}", _port);
+            _logger.LogInformation("Simulated UAS-WAND device started on localhost:{Port} (local connections only)", _port);
         }
         catch (Exception ex)
         {
@@ -136,7 +148,18 @@ public class SimulatedUasWandDevice : IDisposable
     private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
     {
         var clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
-        _logger.LogDebug("Simulated UAS-WAND: Client connected from {Endpoint}", clientEndpoint);
+        _logger.LogDebug("Simulated UAS-WAND: Client connected from {Endpoint} (localhost only)", clientEndpoint);
+        
+        // Verify connection is from localhost for security
+        if (client.Client.RemoteEndPoint is IPEndPoint ipEndpoint)
+        {
+            if (!IPAddress.IsLoopback(ipEndpoint.Address))
+            {
+                _logger.LogWarning("Simulated UAS-WAND: Rejecting non-localhost connection from {Address}", ipEndpoint.Address);
+                client.Close();
+                return;
+            }
+        }
         
         try
         {
@@ -183,9 +206,10 @@ public class SimulatedUasWandDevice : IDisposable
                     }
                     
                     var command = Encoding.UTF8.GetString(commandBytes).Trim();
-                    _logger.LogDebug("Simulated UAS-WAND received command: {Command}", command);
+                    _logger.LogInformation("Simulated UAS-WAND received command: {Command}", command);
                     
                     var response = ProcessCommand(command);
+                    _logger.LogInformation("Simulated UAS-WAND sending response: {Response}", response);
                     var responseBytes = Encoding.UTF8.GetBytes(response);
                     
                     // Send response length prefix
@@ -215,27 +239,94 @@ public class SimulatedUasWandDevice : IDisposable
             // Simulate processing delay
             Thread.Sleep(50);
             
-            return command.ToUpperInvariant() switch
+            // Parse and process HTTP-style JSON command
+            var httpCommand = JsonSerializer.Deserialize<HttpCommand>(command);
+            if (httpCommand != null)
             {
-                "PING" => HandlePing(),
-                var cmd when cmd.Contains("GET") && cmd.Contains("INFO") => HandleGetDeviceInfo(),
-                var cmd when cmd.Contains("KEEP") && cmd.Contains("ALIVE") => HandleKeepAlive(),
-                var cmd when cmd.Contains("GET") && cmd.Contains("WIFI") => HandleGetWifiSettings(),
-                var cmd when cmd.Contains("SET") && cmd.Contains("WIFI") => HandleSetWifiSettings(command),
-                var cmd when cmd.Contains("RESTART") && cmd.Contains("WIFI") => HandleRestartWifi(),
-                var cmd when cmd.Contains("START") && cmd.Contains("SCAN") => HandleStartScan(command),
-                var cmd when cmd.Contains("GET") && cmd.Contains("SCAN") => HandleGetScanStatus(),
-                var cmd when cmd.Contains("STOP") && cmd.Contains("SCAN") => HandleStopScan(),
-                var cmd when cmd.Contains("GET") && cmd.Contains("MEASUREMENT") => HandleGetMeasurement(),
-                var cmd when cmd.Contains("GET") && cmd.Contains("LIVE") => HandleGetLiveReading(command),
-                var cmd when cmd.Contains("SLEEP") => HandleSleep(),
-                _ => JsonSerializer.Serialize(new { success = false, error = "Unknown command", code = "UNKNOWN_COMMAND" })
-            };
+                return ProcessHttpCommand(httpCommand);
+            }
+            
+            // Invalid command format
+            return JsonSerializer.Serialize(new 
+            { 
+                isSuccess = false, 
+                data = (object?)null,
+                message = "Invalid command format. Expected HTTP-style JSON command.",
+                errorCode = "INVALID_FORMAT",
+                timestamp = DateTime.UtcNow,
+                extensions = new { }
+            });
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid JSON command received: {Command}", command);
+            return JsonSerializer.Serialize(new 
+            { 
+                isSuccess = false, 
+                data = (object?)null,
+                message = "Invalid JSON format in command",
+                errorCode = "JSON_PARSE_ERROR",
+                timestamp = DateTime.UtcNow,
+                extensions = new { }
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing command: {Command}", command);
-            return JsonSerializer.Serialize(new { success = false, error = ex.Message, code = "PROCESSING_ERROR" });
+            return JsonSerializer.Serialize(new 
+            { 
+                isSuccess = false, 
+                data = (object?)null,
+                message = ex.Message,
+                errorCode = "PROCESSING_ERROR",
+                timestamp = DateTime.UtcNow,
+                extensions = new { }
+            });
+        }
+    }
+
+    private string ProcessHttpCommand(HttpCommand httpCommand)
+    {
+        try
+        {
+            _logger.LogDebug("Processing HTTP command: {Method} {Endpoint}", httpCommand.Method, httpCommand.Endpoint);
+            
+            return (httpCommand.Method.ToUpperInvariant(), httpCommand.Endpoint.ToLowerInvariant()) switch
+            {
+                ("GET", "/info") => HandleGetDeviceInfo(),
+                ("GET", "/ping") => HandlePing(),
+                ("GET", "/wifi") => HandleGetWifiSettings(),
+                ("POST", "/wifi") => HandleSetWifiSettings(httpCommand.Payload),
+                ("POST", "/wifi/restart") => HandleRestartWifi(),
+                ("POST", "/scan") => HandleStartScan(httpCommand.Payload),
+                ("GET", "/scan") => HandleGetScanStatus(),
+                ("POST", "/scan/stop") => HandleStopScan(),
+                ("GET", "/measurement") => HandleGetMeasurement(),
+                ("GET", var endpoint) when endpoint.StartsWith("/live") => HandleGetLiveReading(httpCommand.Endpoint),
+                ("POST", "/sleep") => HandleSleep(),
+                _ => JsonSerializer.Serialize(new 
+                { 
+                    isSuccess = false, 
+                    data = (object?)null,
+                    message = $"Unknown command: {httpCommand.Method} {httpCommand.Endpoint}",
+                    errorCode = "UNKNOWN_COMMAND",
+                    timestamp = DateTime.UtcNow,
+                    extensions = new { }
+                })
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing HTTP command: {Method} {Endpoint}", httpCommand.Method, httpCommand.Endpoint);
+            return JsonSerializer.Serialize(new 
+            { 
+                isSuccess = false, 
+                data = (object?)null,
+                message = ex.Message,
+                errorCode = "PROCESSING_ERROR",
+                timestamp = DateTime.UtcNow,
+                extensions = new { }
+            });
         }
     }
 
@@ -243,8 +334,12 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = _deviceInfo
+            isSuccess = true,
+            data = _deviceInfo,
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -252,8 +347,12 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "Device alive" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "Device alive" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -261,18 +360,27 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = _wifiConfig
+            isSuccess = true,
+            data = _wifiConfig,
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
-    private string HandleSetWifiSettings(string command)
+    private string HandleSetWifiSettings(object? payload)
     {
         // Simulate WiFi settings update
+        _logger.LogDebug("WiFi settings update requested with payload: {Payload}", payload);
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "WiFi settings updated" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "WiFi settings updated" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -280,24 +388,33 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "WiFi restarted" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "WiFi restarted" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
-    private string HandleStartScan(string command)
+    private string HandleStartScan(object? payload)
     {
+        _logger.LogDebug("Scan start requested with payload: {Payload}", payload);
         _isScanning = true;
         return JsonSerializer.Serialize(new
         {
-            success = true,
+            isSuccess = true,
             data = new ScanStatus
             {
                 Status = 1, // 1 = scanning
                 Progress = 0,
                 Message = "Scan started",
                 TotalPoints = 1000
-            }
+            },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -309,14 +426,18 @@ public class SimulatedUasWandDevice : IDisposable
             
         return JsonSerializer.Serialize(new
         {
-            success = true,
+            isSuccess = true,
             data = new ScanStatus
             {
                 Status = _isScanning ? 1 : 0, // 1 = scanning, 0 = completed
                 Progress = progress,
                 Message = _isScanning ? "Scanning in progress" : "Scan completed",
                 TotalPoints = 1000
-            }
+            },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -325,8 +446,12 @@ public class SimulatedUasWandDevice : IDisposable
         _isScanning = false;
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "Scan stopped" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "Scan stopped" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -334,36 +459,71 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
+            isSuccess = true,
             data = new
             {
-                timestamp = DateTime.Now,
+                timestamp = DateTime.UtcNow,
                 measurements = new object[]
                 {
                     new { sensor = "temperature", value = 23.5, unit = "°C" },
                     new { sensor = "humidity", value = 45.2, unit = "%" },
                     new { sensor = "signal", value = Random.Shared.Next(50, 100), unit = "dBm" }
                 }
-            }
+            },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
-    private string HandleGetLiveReading(string command)
+    private string HandleGetLiveReading(string endpoint)
     {
-        var dataPoints = Enumerable.Range(0, 100)
+        // Parse query parameters from endpoint (e.g., /live?startIndex=0&numPoints=100)
+        var startIndex = 0;
+        var numPoints = 100;
+        
+        if (endpoint.Contains('?'))
+        {
+            var queryString = endpoint.Split('?')[1];
+            var queryParams = queryString.Split('&');
+            
+            foreach (var param in queryParams)
+            {
+                var keyValue = param.Split('=');
+                if (keyValue.Length == 2)
+                {
+                    switch (keyValue[0].ToLowerInvariant())
+                    {
+                        case "startindex":
+                            int.TryParse(keyValue[1], out startIndex);
+                            break;
+                        case "numpoints":
+                            int.TryParse(keyValue[1], out numPoints);
+                            break;
+                    }
+                }
+            }
+        }
+        
+        var dataPoints = Enumerable.Range(startIndex, numPoints)
             .Select(i => Random.Shared.NextDouble() * 100)
             .ToArray();
             
         return JsonSerializer.Serialize(new
         {
-            success = true,
+            isSuccess = true,
             data = new
             {
-                startIndex = 0,
+                startIndex = startIndex,
                 numPoints = dataPoints.Length,
                 data = dataPoints,
-                timestamp = DateTime.Now
-            }
+                timestamp = DateTime.UtcNow
+            },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -371,8 +531,12 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "pong" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "pong" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
@@ -380,25 +544,19 @@ public class SimulatedUasWandDevice : IDisposable
     {
         return JsonSerializer.Serialize(new
         {
-            success = true,
-            data = new CodedResponse { Code = 0, Message = "Device entering sleep mode" }
+            isSuccess = true,
+            data = new CodedResponse { Code = 0, Message = "Device entering sleep mode" },
+            message = "",
+            errorCode = "",
+            timestamp = DateTime.UtcNow,
+            extensions = new { }
         });
     }
 
     private static string GetLocalIPAddress()
     {
-        try
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            var localIP = host.AddressList
-                .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip));
-            
-            return localIP?.ToString() ?? "127.0.0.1";
-        }
-        catch
-        {
-            return "127.0.0.1";
-        }
+        // Always return localhost for security - simulator only accepts local connections
+        return "127.0.0.1";
     }
 
     public void Dispose()

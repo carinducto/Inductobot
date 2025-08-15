@@ -105,25 +105,34 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
         
         try
         {
+            _logger.LogDebug("Attempting to connect to {IpAddress}:{Port}...", ipAddress, port);
             var connected = await testTransport.ConnectAsync(ipAddress, port, cancellationToken);
+            _logger.LogDebug("Connect result for {IpAddress}:{Port}: {Connected}", ipAddress, port, connected);
+            
             if (connected)
             {
                 // Send a simple ping command
                 try
                 {
-                    await testTransport.SendCommandAsync("ping", cancellationToken);
-                    _logger.LogDebug("Connection test successful for {IpAddress}:{Port}", ipAddress, port);
+                    _logger.LogDebug("Sending ping command to {IpAddress}:{Port}...", ipAddress, port);
+                    var response = await testTransport.SendCommandAsync("ping", cancellationToken);
+                    _logger.LogDebug("Ping response from {IpAddress}:{Port}: {Response}", ipAddress, port, response);
+                    _logger.LogInformation("Connection test successful for {IpAddress}:{Port}", ipAddress, port);
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "Connection test failed during ping for {IpAddress}:{Port}", ipAddress, port);
+                    _logger.LogWarning(ex, "Connection test failed during ping for {IpAddress}:{Port}", ipAddress, port);
                 }
+            }
+            else
+            {
+                _logger.LogDebug("Failed to connect to {IpAddress}:{Port}", ipAddress, port);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Connection test failed for {IpAddress}:{Port}", ipAddress, port);
+            _logger.LogWarning(ex, "Connection test failed for {IpAddress}:{Port}", ipAddress, port);
         }
         
         return false;

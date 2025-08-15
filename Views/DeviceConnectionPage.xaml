@@ -97,14 +97,6 @@
                                              HeightRequest="20"
                                              Grid.Column="1"/>
                             
-                            <Button x:Name="CheckSimulatorButton"
-                                    Text="Find Simulator"
-                                    Clicked="OnCheckSimulatorClicked"
-                                    BackgroundColor="#FFD700"
-                                    TextColor="Black"
-                                    FontSize="12"
-                                    Grid.Column="2"/>
-                            
                             <Button x:Name="ScanButton"
                                     Text="Scan Network"
                                     Clicked="OnScanNetworkClicked"

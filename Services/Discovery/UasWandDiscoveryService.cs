@@ -275,7 +275,10 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
     {
         try
         {
+            _logger.LogInformation("Checking for running simulator...");
             var status = _simulatorService.GetStatus();
+            _logger.LogInformation("Simulator status - IsRunning: {IsRunning}, IP: {IP}, Port: {Port}", 
+                status.IsRunning, status.IPAddress, status.Port);
             
             if (status.IsRunning)
             {
@@ -284,7 +287,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
                 var simulatorDevice = new UASDeviceInfo
                 {
                     DeviceId = "UAS-WAND-SIMULATOR",
-                    IpAddress = status.IPAddress ?? "127.0.0.1",
+                    IpAddress = "127.0.0.1", // Force localhost for reliable connection
                     Port = status.Port,
                     Name = status.DeviceName ?? "UAS-WAND_Simulator",
                     FirmwareVersion = status.FirmwareVersion,

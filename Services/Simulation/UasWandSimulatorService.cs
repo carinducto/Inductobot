@@ -7,7 +7,8 @@ using System.Net.Sockets;
 namespace Inductobot.Services.Simulation;
 
 /// <summary>
-/// Background service that runs the UAS-WAND device simulator
+/// Background service that runs the UAS-WAND device simulator.
+/// Security: Simulator only accepts connections from localhost for safety.
 /// </summary>
 public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorService
 {
@@ -47,9 +48,10 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
                 
             _simulatedDevice = new SimulatedUasWandDevice(simulatorLogger, _simulatorPort);
             
-            _logger.LogInformation("Starting UAS-WAND simulator on port {Port}", _simulatorPort);
+            _logger.LogInformation("Starting UAS-WAND simulator on localhost:{Port} (local connections only)", _simulatorPort);
             await _simulatedDevice.StartAsync(stoppingToken);
             _startTime = DateTime.Now;
+            _logger.LogInformation("UAS-WAND simulator started successfully on localhost (secure mode). IsRunning: {IsRunning}", IsRunning);
             SimulatorStateChanged?.Invoke(this, true);
             
             // Keep the service running until cancellation
@@ -162,17 +164,7 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
 
     private static string GetLocalIPAddress()
     {
-        try
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            var localIP = host.AddressList
-                .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(ip));
-            
-            return localIP?.ToString() ?? "127.0.0.1";
-        }
-        catch
-        {
-            return "127.0.0.1";
-        }
+        // Always return localhost for security - simulator only accepts local connections
+        return "127.0.0.1";
     }
 }

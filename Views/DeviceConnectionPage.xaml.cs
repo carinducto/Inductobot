@@ -46,10 +46,25 @@ public partial class DeviceConnectionPage : ContentPage
 
     private static T GetService<T>() where T : class
     {
-        if (Application.Current?.Handler?.MauiContext?.Services?.GetService<T>() is T service)
-            return service;
-        
-        throw new InvalidOperationException($"Service {typeof(T).Name} not found");
+        try
+        {
+            var services = Application.Current?.Handler?.MauiContext?.Services;
+            if (services == null)
+            {
+                throw new InvalidOperationException($"MauiContext.Services not available for {typeof(T).Name}");
+            }
+
+            if (services.GetService<T>() is T service)
+            {
+                return service;
+            }
+            
+            throw new InvalidOperationException($"Service {typeof(T).Name} not registered or not available");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to resolve service {typeof(T).Name}: {ex.Message}", ex);
+        }
     }
 
     private void InitializePage()
@@ -81,6 +96,26 @@ public partial class DeviceConnectionPage : ContentPage
         _logger.LogInformation("Event subscriptions complete");
         _logger.LogInformation("DeviceDiscovered event subscriber count: {Count}", _discoveryService.GetDeviceDiscoveredSubscriberCount());
         
+        // Force immediate sync after subscription
+        Task.Run(async () =>
+        {
+            try
+            {
+                // Small delay to ensure subscription is fully registered
+                await Task.Delay(100);
+                
+                // Check the subscriber count again after delay
+                _logger.LogInformation("DeviceDiscovered event subscriber count after delay: {Count}", _discoveryService.GetDeviceDiscoveredSubscriberCount());
+                
+                // Force simulator discovery to ensure it's found
+                await _discoveryService.ForceDiscoverSimulatorAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in post-subscription discovery");
+            }
+        });
+        
         // Check for any existing discovered devices
         var existingDevices = _discoveryService.DiscoveredDevices;
         _logger.LogInformation("Found {Count} existing discovered devices", existingDevices.Count);
@@ -101,12 +136,24 @@ public partial class DeviceConnectionPage : ContentPage
         UpdateDeviceCount();
         
         // Also force a simulator check since the hosted service may have started it already
+        // Add a small delay to allow the hosted service to start
         Task.Run(async () =>
         {
             try
             {
+                _logger.LogInformation("Waiting for hosted services to initialize...");
+                await Task.Delay(2000); // Wait 2 seconds for services to start
+                
                 _logger.LogInformation("Forcing initial simulator discovery check");
                 await _discoveryService.ForceDiscoverSimulatorAsync();
+                
+                // Wait a bit more and try again if no devices were found
+                await Task.Delay(1000);
+                if (_discoveryService.DiscoveredDevices.Count == 0)
+                {
+                    _logger.LogInformation("No devices found, trying discovery again...");
+                    await _discoveryService.ForceDiscoverSimulatorAsync();
+                }
             }
             catch (Exception ex)
             {
@@ -235,6 +282,25 @@ public partial class DeviceConnectionPage : ContentPage
                 
                 // Start scan with user cancellation support
                 var scanTask = _discoveryService.StartScanAsync(_scanCts.Token);
+                
+                // Also ensure we pick up any devices that were discovered but not added via events
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000); // Wait for scan to find devices
+                    var discoveredDevices = _discoveryService.DiscoveredDevices;
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        foreach (var device in discoveredDevices)
+                        {
+                            if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
+                            {
+                                _logger.LogInformation("Adding device found by discovery but not via events: {DeviceName}", device.Name);
+                                _devices.Add(device);
+                            }
+                        }
+                        UpdateDeviceCount();
+                    });
+                });
                 
                 // Create a timeout for very long scans
                 var timeoutTask = Task.Delay(TimeSpan.FromMinutes(2), _scanCts.Token);
@@ -673,41 +739,5 @@ public partial class DeviceConnectionPage : ContentPage
 
     #endregion
 
-    #region Debug Methods
-
-    private async void OnCheckSimulatorClicked(object sender, EventArgs e)
-    {
-        try
-        {
-            _logger.LogInformation("Manual simulator discovery check triggered");
-            _logger.LogInformation("Current devices in UI collection: {Count}", _devices.Count);
-            _logger.LogInformation("DeviceDiscovered event has {Count} subscribers", _discoveryService.GetDeviceDiscoveredSubscriberCount());
-            
-            // Force add a test device to verify UI binding works
-            var testDevice = new UASDeviceInfo
-            {
-                DeviceId = "TEST-UI-DEVICE",
-                Name = "UI Test Device",
-                IpAddress = "127.0.0.1",
-                Port = 9999,
-                IsOnline = true,
-                DeviceType = "Test"
-            };
-            
-            _logger.LogInformation("Adding test device to UI collection");
-            _devices.Add(testDevice);
-            _logger.LogInformation("Test device added. New collection count: {Count}", _devices.Count);
-            UpdateDeviceCount();
-            
-            await _discoveryService.ForceDiscoverSimulatorAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during manual simulator check");
-            await SafeDisplayAlert("Error", $"Failed to check for simulator: {ex.Message}", "OK");
-        }
-    }
-
-    #endregion
 
 }

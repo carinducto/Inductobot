@@ -102,8 +102,10 @@ public class UasWandApiService : IUasWandApiService
             }
             
             _logger.LogDebug("Sending UAS-WAND command: {Method} {Endpoint}", method.Method, endpoint);
+            _logger.LogDebug("Request JSON: {RequestJson}", requestJson);
             
             var responseJson = await _transport.SendCommandAsync(requestJson, cancellationToken);
+            _logger.LogDebug("Response JSON: {ResponseJson}", responseJson);
             
             var response = SafeDeserialize<ApiResponse<T>>(responseJson);
             if (response != null)
