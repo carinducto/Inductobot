@@ -14,6 +14,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
 {
     private readonly IUasWandDeviceService _deviceService;
     private readonly IUasWandSimulatorService _simulatorService;
+    private readonly IConfigurationService _config;
     private readonly ILogger<UasWandDiscoveryService> _logger;
     private readonly List<UASDeviceInfo> _discoveredDevices = new();
     private CancellationTokenSource? _scanCts;
@@ -26,13 +27,14 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
     public IReadOnlyList<UASDeviceInfo> DiscoveredDevices => _discoveredDevices.AsReadOnly();
     public bool IsScanning { get; private set; }
     
-    // Common ports used by UAS-WAND devices
-    private readonly int[] _commonPorts = { 80, 443, 8080, 8443, 5000, 5001, 7000, 7001 };
+    // Common ports used by UAS-WAND devices (from configuration)
+    private int[] CommonPorts => _config.DefaultPorts;
     
-    public UasWandDiscoveryService(IUasWandDeviceService deviceService, IUasWandSimulatorService simulatorService, ILogger<UasWandDiscoveryService> logger)
+    public UasWandDiscoveryService(IUasWandDeviceService deviceService, IUasWandSimulatorService simulatorService, IConfigurationService config, ILogger<UasWandDiscoveryService> logger)
     {
         _deviceService = deviceService;
         _simulatorService = simulatorService;
+        _config = config;
         _logger = logger;
     }
     
@@ -407,7 +409,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
             if (reply.Status == IPStatus.Success)
             {
                 // Host is alive, try connecting to common ports
-                foreach (var port in _commonPorts)
+                foreach (var port in CommonPorts)
                 {
                     if (cancellationToken.IsCancellationRequested)
                         break;
@@ -434,7 +436,7 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
         {
             using var client = new TcpClient();
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2)); // Keep short for port testing
             
             await client.ConnectAsync(ipAddress, port, timeoutCts.Token);
             return client.Connected;

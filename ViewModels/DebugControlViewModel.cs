@@ -1,3 +1,4 @@
+using Inductobot.Abstractions.Services;
 using Inductobot.Models.Debug;
 using Inductobot.Services.Debug;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,7 @@ public class DebugControlViewModel : INotifyPropertyChanged, IDisposable
     private readonly DebugConfiguration _config;
     private readonly DebugConsoleService? _consoleService;
     private readonly FileLoggingService? _fileService;
+    private readonly IConfigurationService _configService;
     private readonly ILogger<DebugControlViewModel> _logger;
     
     private string _statusText = "";
@@ -59,18 +61,27 @@ public class DebugControlViewModel : INotifyPropertyChanged, IDisposable
         private set => SetProperty(ref _recentLogFiles, value);
     }
     
+    // UI Settings from configuration service
+    public bool ShowTimestamps => _configService.ShowTimestamps;
+    public bool ShowDebugInfo => _configService.ShowDebugInfo;
+    
     public DebugControlViewModel(
         DebugConfiguration config,
         DebugConsoleService? consoleService,
         FileLoggingService? fileService,
+        IConfigurationService configService,
         ILogger<DebugControlViewModel> logger)
     {
         _config = config;
         _consoleService = consoleService;
         _fileService = fileService;
+        _configService = configService;
         _logger = logger;
         
         UpdateStatus();
+        
+        // Subscribe to configuration changes
+        _configService.ConfigurationChanged += OnConfigurationChanged;
         
         if (_fileService != null)
         {
@@ -276,6 +287,14 @@ public class DebugControlViewModel : INotifyPropertyChanged, IDisposable
     
     public event PropertyChangedEventHandler? PropertyChanged;
     
+    private void OnConfigurationChanged(object? sender, ConfigurationChangedEventArgs e)
+    {
+        // Refresh UI settings when configuration changes
+        OnPropertyChanged(nameof(ShowTimestamps));
+        OnPropertyChanged(nameof(ShowDebugInfo));
+        _logger.LogInformation("Debug UI settings refreshed from configuration");
+    }
+    
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -283,6 +302,6 @@ public class DebugControlViewModel : INotifyPropertyChanged, IDisposable
     
     public void Dispose()
     {
-        // Nothing to dispose currently
+        _configService.ConfigurationChanged -= OnConfigurationChanged;
     }
 }

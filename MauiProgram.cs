@@ -63,6 +63,10 @@ public static class MauiProgram
 		builder.Services.AddSingleton<INavigationService, NavigationService>();
 		builder.Services.AddSingleton<INetworkInfoService, NetworkInfoService>();
 		
+		// Register Configuration Services
+		builder.Services.AddSingleton<IConfigurationService, Services.Core.ConfigurationService>();
+		builder.Services.AddSingleton<IRuntimeLoggingService, Services.Core.RuntimeLoggingService>();
+		
 		// Register UAS-WAND Simulator (for testing without real device)
 		builder.Services.AddSingleton<UasWandSimulatorService>();
 		builder.Services.AddSingleton<IUasWandSimulatorService>(provider => provider.GetRequiredService<UasWandSimulatorService>());

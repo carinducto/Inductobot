@@ -1,3 +1,4 @@
+using Inductobot.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 
@@ -6,11 +7,13 @@ namespace Inductobot.Views;
 public partial class SettingsPage : ContentPage
 {
     private readonly ILogger<SettingsPage> _logger;
+    private readonly IConfigurationService _config;
     
-    public SettingsPage(ILogger<SettingsPage> logger)
+    public SettingsPage(ILogger<SettingsPage> logger, IConfigurationService config)
     {
         InitializeComponent();
         _logger = logger;
+        _config = config;
         
         _logger.LogInformation("SettingsPage constructor called");
         
@@ -20,7 +23,7 @@ public partial class SettingsPage : ContentPage
     }
 
     // Parameterless constructor for XAML DataTemplate (manually resolve dependencies)
-    public SettingsPage() : this(GetService<ILogger<SettingsPage>>())
+    public SettingsPage() : this(GetService<ILogger<SettingsPage>>(), GetService<IConfigurationService>())
     {
     }
 
@@ -139,6 +142,9 @@ public partial class SettingsPage : ContentPage
             
             _logger.LogInformation("Settings saved successfully");
             StatusLabel.Text = "Settings saved";
+            
+            // Notify configuration service of changes
+            _config.RefreshConfiguration();
             
             // Auto-hide status message
             _ = Task.Run(async () =>

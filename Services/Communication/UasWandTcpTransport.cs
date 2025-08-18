@@ -1,4 +1,5 @@
 using Inductobot.Abstractions.Communication;
+using Inductobot.Abstractions.Services;
 using Inductobot.Models.Commands;
 using Inductobot.Models.Device;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ namespace Inductobot.Services.Communication;
 public class UasWandTcpTransport : IUasWandTransport
 {
     private readonly ILogger<UasWandTcpTransport> _logger;
+    private readonly IConfigurationService _config;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     
     private TcpClient? _tcpClient;
@@ -41,9 +43,10 @@ public class UasWandTcpTransport : IUasWandTransport
     
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
     
-    public UasWandTcpTransport(ILogger<UasWandTcpTransport> logger)
+    public UasWandTcpTransport(ILogger<UasWandTcpTransport> logger, IConfigurationService config)
     {
         _logger = logger;
+        _config = config;
     }
     
     public async Task<bool> ConnectAsync(string address, int port, CancellationToken cancellationToken = default)
@@ -60,13 +63,14 @@ public class UasWandTcpTransport : IUasWandTransport
             _tcpClient = new TcpClient();
             if (_tcpClient != null)
             {
-                _tcpClient.ReceiveTimeout = 30000; // 30 seconds
-                _tcpClient.SendTimeout = 30000;    // 30 seconds
+                var timeoutMs = (int)_config.GetConnectionTimeout().TotalMilliseconds;
+                _tcpClient.ReceiveTimeout = timeoutMs;
+                _tcpClient.SendTimeout = timeoutMs;
                 _tcpClient.NoDelay = true;
             }
             
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            cts.CancelAfter(_config.GetConnectionTimeout());
             
             await _tcpClient!.ConnectAsync(address, port, cts.Token);
             
@@ -145,7 +149,7 @@ public class UasWandTcpTransport : IUasWandTransport
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            cts.CancelAfter(_config.GetConnectionTimeout());
             await _sendLock.WaitAsync(cts.Token);
             
             try

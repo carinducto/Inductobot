@@ -12,6 +12,7 @@ namespace Inductobot.Services.Business;
 public class UasWandHttpDeviceService : IUasWandDeviceService
 {
     private readonly UasWandHttpApiService _apiService;
+    private readonly IConfigurationService _config;
     private readonly ILogger<UasWandHttpDeviceService> _logger;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     
@@ -27,9 +28,10 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
     public event EventHandler<string>? ConnectionProgressChanged;
     
-    public UasWandHttpDeviceService(UasWandHttpApiService apiService, ILogger<UasWandHttpDeviceService> logger)
+    public UasWandHttpDeviceService(UasWandHttpApiService apiService, IConfigurationService config, ILogger<UasWandHttpDeviceService> logger)
     {
         _apiService = apiService;
+        _config = config;
         _logger = logger;
     }
     
@@ -68,7 +70,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             
             // Step 2: Test basic connectivity with timeout
             ReportProgress("🌐 Testing network connectivity...");
-            using var networkTest = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var networkTest = new CancellationTokenSource(_config.GetConnectionTimeout());
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, networkTest.Token);
             
             try
@@ -94,7 +96,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             
             // Step 3: Test HTTP endpoint availability  
             ReportProgress("🔗 Testing HTTP endpoint...");
-            using var httpTest = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var httpTest = new CancellationTokenSource(_config.GetConnectionTimeout());
             using var httpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, httpTest.Token);
             
             try
@@ -120,7 +122,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             
             // Step 4: Get device information to validate connection
             ReportProgress("📋 Retrieving device information...");
-            using var deviceInfoTest = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var deviceInfoTest = new CancellationTokenSource(_config.GetConnectionTimeout());
             using var deviceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deviceInfoTest.Token);
             
             try
@@ -285,7 +287,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             testApiService.SetBaseUrl(baseUrl);
             
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            cts.CancelAfter(_config.GetConnectionTimeout());
             
             var result = await testApiService.KeepAliveAsync(cts.Token);
             return result.IsSuccess;
@@ -312,7 +314,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             try
             {
                 var startTime = DateTime.Now;
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var cts = new CancellationTokenSource(_config.GetKeepAliveInterval());
                 var pingResult = await _apiService.KeepAliveAsync(cts.Token);
                 health.LastResponseTime = DateTime.Now - startTime;
                 

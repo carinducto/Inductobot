@@ -13,6 +13,7 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
 {
     private readonly IUasWandTransport _transport;
     private readonly IUasWandApiService _apiService;
+    private readonly IConfigurationService _config;
     private readonly ILogger<UasWandDeviceService> _logger;
     private readonly Stopwatch _connectionTimer = new();
     
@@ -31,10 +32,12 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
     public UasWandDeviceService(
         IUasWandTransport transport,
         IUasWandApiService apiService,
+        IConfigurationService config,
         ILogger<UasWandDeviceService> logger)
     {
         _transport = transport;
         _apiService = apiService;
+        _config = config;
         _logger = logger;
         
         _transport.ConnectionStateChanged += OnTransportConnectionStateChanged;
@@ -102,7 +105,7 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
         // Create a temporary transport for testing  
         var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug());
         var testLogger = loggerFactory.CreateLogger<Communication.UasWandTcpTransport>();
-        using var testTransport = new Communication.UasWandTcpTransport(testLogger);
+        using var testTransport = new Communication.UasWandTcpTransport(testLogger, _config);
         
         try
         {
