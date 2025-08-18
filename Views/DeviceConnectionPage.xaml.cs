@@ -886,7 +886,7 @@ public partial class DeviceConnectionPage : ContentPage
     private async void OnRefreshNetworkClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Refresh Network Info";
+        const string originalButtonText = "Refresh Network";
         
         try
         {
