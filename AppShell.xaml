@@ -15,7 +15,7 @@
             Route="DeviceConnection" />
             
         <ShellContent
-            Title="Device Control"
+            Title="UAS-WAND Control"
             Icon="dotnet_bot.png"
             ContentTemplate="{DataTemplate local:MainPage}"
             Route="DeviceControl" />

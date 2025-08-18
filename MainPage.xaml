@@ -2,13 +2,13 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Inductobot.MainPage"
-             Title="Device Control">
+             Title="UAS-WAND Control">
 
     <Grid RowDefinitions="Auto,*,Auto" Padding="20">
         
         <!-- Header Section -->
         <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label Text="Device Control Dashboard" 
+            <Label Text="UAS-WAND Control Dashboard" 
                    FontSize="32" 
                    FontAttributes="Bold"
                    HorizontalOptions="Center"/>

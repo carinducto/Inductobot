@@ -581,7 +581,7 @@ public partial class DeviceConnectionPage : ContentPage
                 StatusLabel.Text = "Connected";
                 await SafeDisplayAlert("Success", $"Connected to device at {ipAddress}:{port}", "OK");
                 
-                // Navigate to device control page
+                // Navigate to UAS-WAND control page
                 await Shell.Current.GoToAsync("//DeviceControl");
             }
             else

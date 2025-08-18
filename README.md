@@ -61,8 +61,8 @@ dotnet run --framework net9.0-windows10.0.19041.0
 4. Or manually add devices using IP address and port
 5. Click "Connect" to establish TCP/IP connection
 
-### Device Control
-1. Switch to the "Device Control" tab after connecting
+### UAS-WAND Control
+1. Switch to the "UAS-WAND Control" tab after connecting
 2. Available operations:
    - **Device Information**: Get device details and status
    - **Measurements**: Start/stop scans, get live readings
@@ -77,7 +77,7 @@ dotnet run --framework net9.0-windows10.0.19041.0
 - **DeviceDiscoveryService**: Network scanning and device management
 - **UASDeviceInfo**: Device information and status model
 - **Device Connection Page**: UI for device discovery and connection
-- **Device Control Page**: UI for device operations and commands
+- **UAS-WAND Control Page**: UI for device operations and commands
 
 ### Communication Protocol
 
