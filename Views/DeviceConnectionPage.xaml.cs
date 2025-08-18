@@ -265,13 +265,21 @@ public partial class DeviceConnectionPage : ContentPage
     
     private async void OnScanNetworkClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         if (_discoveryService.IsScanning)
         {
+            // Stop scanning
+            ShowStatusToast("Stopping network scan...", ToastType.Info);
             _discoveryService.StopScan();
             _scanCts?.Cancel();
+            ShowStatusToast("Network scan stopped", ToastType.Warning);
         }
         else
         {
+            // Start scanning
+            ShowStatusToast("Starting network device scan...", ToastType.Info);
+            
             // Cancel any existing scan
             _scanCts?.Cancel();
             _scanCts = new CancellationTokenSource();
@@ -309,7 +317,9 @@ public partial class DeviceConnectionPage : ContentPage
                 
                 if (completedTask == timeoutTask)
                 {
-                    var userChoice = await DisplayAlert("Scan Taking Long", 
+                    ShowStatusToast("Network scan taking longer than expected...", ToastType.Warning);
+                    
+                    var userChoice = await SafeDisplayAlert("Scan Taking Long", 
                         "Network scan is taking longer than expected. Continue scanning?", 
                         "Keep Scanning", "Stop");
                     
@@ -317,9 +327,11 @@ public partial class DeviceConnectionPage : ContentPage
                     {
                         _discoveryService.StopScan();
                         _scanCts.Cancel();
+                        ShowStatusToast("Network scan cancelled by user", ToastType.Warning);
                     }
                     else
                     {
+                        ShowStatusToast("Continuing network scan...", ToastType.Info);
                         // Wait for scan to complete
                         await scanTask;
                     }
@@ -328,15 +340,20 @@ public partial class DeviceConnectionPage : ContentPage
                 {
                     await scanTask;
                 }
+                
+                // Scan completed successfully
+                var deviceCount = _devices.Count;
+                ShowStatusToast($"Network scan completed - found {deviceCount} device{(deviceCount != 1 ? "s" : "")}", ToastType.Success);
             }
             catch (OperationCanceledException)
             {
                 _logger.LogInformation("Network scan cancelled by user");
+                ShowStatusToast("Network scan cancelled", ToastType.Warning);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during network scan");
-                await DisplayAlert("Scan Error", $"Network scan failed: {ex.Message}", "OK");
+                ShowStatusToast($"Network scan failed: {ex.Message}", ToastType.Error);
             }
             finally
             {
@@ -348,65 +365,173 @@ public partial class DeviceConnectionPage : ContentPage
     
     private async void OnAddManualDeviceClicked(object sender, EventArgs e)
     {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(IpAddressEntry.Text))
-            {
-                await SafeDisplayAlert("Error", "Please enter an IP address", "OK");
-                return;
-            }
-            
-            if (!int.TryParse(PortEntry.Text, out int port) || port <= 0 || port > 65535)
-            {
-                await SafeDisplayAlert("Error", "Please enter a valid port number (1-65535)", "OK");
-                return;
-            }
-            
-            var ipAddress = IpAddressEntry.Text.Trim();
-            
-            // Validate IP address format
-            if (!System.Net.IPAddress.TryParse(ipAddress, out _))
-            {
-                await SafeDisplayAlert("Error", "Please enter a valid IP address format", "OK");
-                return;
-            }
-            
-            await _discoveryService.AddDeviceManuallyAsync(ipAddress, port);
-            
-            IpAddressEntry.Text = string.Empty;
-            PortEntry.Text = "80";
-            
-            await SafeDisplayAlert("Success", $"Device {ipAddress}:{port} added to device list", "OK");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error adding manual device");
-            await SafeDisplayAlert("Error", "Failed to add device. Please try again.", "OK");
-        }
-    }
-    
-    private async void OnConnectManualClicked(object sender, EventArgs e)
-    {
+        var button = sender as Button;
+        const string originalButtonText = "Add";
+        
+        // Input validation
         if (string.IsNullOrWhiteSpace(IpAddressEntry.Text))
         {
-            await DisplayAlert("Error", "Please enter an IP address", "OK");
+            ShowStatusToast("Please enter an IP address", ToastType.Warning);
+            IpAddressEntry.Focus();
             return;
         }
         
         if (!int.TryParse(PortEntry.Text, out int port) || port <= 0 || port > 65535)
         {
-            await DisplayAlert("Error", "Please enter a valid port number (1-65535)", "OK");
+            ShowStatusToast("Please enter a valid port number (1-65535)", ToastType.Warning);
+            PortEntry.Focus();
             return;
         }
         
-        await ConnectToDeviceAsync(IpAddressEntry.Text.Trim(), port);
+        var ipAddress = IpAddressEntry.Text.Trim();
+        
+        // Validate IP address format
+        if (!System.Net.IPAddress.TryParse(ipAddress, out _))
+        {
+            ShowStatusToast("Please enter a valid IP address format", ToastType.Warning);
+            IpAddressEntry.Focus();
+            return;
+        }
+        
+        try
+        {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Adding...");
+            ShowStatusToast($"Adding device {ipAddress}:{port}...", ToastType.Info);
+            
+            await _discoveryService.AddDeviceManuallyAsync(ipAddress, port);
+            
+            // Clear inputs on success
+            IpAddressEntry.Text = string.Empty;
+            PortEntry.Text = "80";
+            
+            SetButtonSuccess(button, "✅ Added");
+            ShowStatusToast($"Device {ipAddress}:{port} added successfully", ToastType.Success);
+            
+            // Auto-reset button after success
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding manual device");
+            
+            SetButtonError(button, "❌ Failed");
+            ShowStatusToast($"Failed to add device: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
+        }
+    }
+    
+    private async void OnConnectManualClicked(object sender, EventArgs e)
+    {
+        var button = sender as Button;
+        const string originalButtonText = "Connect";
+        
+        // Input validation
+        if (string.IsNullOrWhiteSpace(IpAddressEntry.Text))
+        {
+            ShowStatusToast("Please enter an IP address", ToastType.Warning);
+            IpAddressEntry.Focus();
+            return;
+        }
+        
+        if (!int.TryParse(PortEntry.Text, out int port) || port <= 0 || port > 65535)
+        {
+            ShowStatusToast("Please enter a valid port number (1-65535)", ToastType.Warning);
+            PortEntry.Focus();
+            return;
+        }
+        
+        // Validate IP address format
+        var ipAddress = IpAddressEntry.Text.Trim();
+        if (!System.Net.IPAddress.TryParse(ipAddress, out _))
+        {
+            ShowStatusToast("Please enter a valid IP address format", ToastType.Warning);
+            IpAddressEntry.Focus();
+            return;
+        }
+        
+        try
+        {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Connecting...");
+            ShowStatusToast($"Connecting to {ipAddress}:{port}...", ToastType.Info);
+            
+            await ConnectToDeviceAsync(ipAddress, port);
+            
+            // ConnectToDeviceAsync handles its own success/error feedback
+            // Just reset the button
+            SetButtonNormal(button, originalButtonText);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in manual connect");
+            
+            SetButtonError(button, "❌ Failed");
+            ShowStatusToast($"Connection failed: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
+        }
     }
     
     private async void OnConnectDeviceClicked(object sender, EventArgs e)
     {
         if (sender is Button button && button.CommandParameter is UASDeviceInfo device)
         {
-            await ConnectToDeviceAsync(device.IpAddress, device.Port);
+            const string originalButtonText = "Connect";
+            
+            try
+            {
+                // Immediate visual feedback
+                SetButtonLoading(button, "Connecting...");
+                ShowStatusToast($"Connecting to {device.Name}...", ToastType.Info);
+                
+                await ConnectToDeviceAsync(device.IpAddress, device.Port);
+                
+                // ConnectToDeviceAsync handles its own success/error feedback
+                // Just reset the button
+                SetButtonNormal(button, originalButtonText);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error connecting to device from list");
+                
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Connection to {device.Name} failed: {ex.Message}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
+            }
         }
     }
     
@@ -487,7 +612,46 @@ public partial class DeviceConnectionPage : ContentPage
     {
         if (sender is Button button && button.CommandParameter is UASDeviceInfo device)
         {
-            _discoveryService.RemoveDevice(device);
+            const string originalButtonText = "Remove";
+            
+            try
+            {
+                // Immediate visual feedback
+                SetButtonLoading(button, "Removing...");
+                ShowStatusToast($"Removing {device.Name} from device list...", ToastType.Info);
+                
+                _discoveryService.RemoveDevice(device);
+                
+                SetButtonSuccess(button, "✅ Removed");
+                ShowStatusToast($"{device.Name} removed successfully", ToastType.Success);
+                
+                // Auto-reset button after success (though it will likely be removed from UI)
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing device");
+                
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Failed to remove {device.Name}: {ex.Message}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
+            }
         }
     }
     
@@ -721,23 +885,250 @@ public partial class DeviceConnectionPage : ContentPage
 
     private async void OnRefreshNetworkClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        const string originalButtonText = "Refresh Network Info";
+        
         try
         {
-            // Show loading state
+            // Immediate visual feedback
+            SetButtonLoading(button, "Refreshing...");
+            ShowStatusToast("Refreshing network information...", ToastType.Info);
+            
+            // Show loading state in display area
             GatewayAddressLabel.Text = "Loading...";
             IPRangeLabel.Text = "Loading...";
             NetworkInterfaceLabel.Text = "Loading...";
 
             await UpdateNetworkInfoAsync();
+            
+            SetButtonSuccess(button, "✅ Refreshed");
+            ShowStatusToast("Network information updated successfully", ToastType.Success);
+            
+            // Auto-reset button after success
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1500);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error refreshing network information");
-            await SafeDisplayAlert("Error", $"Failed to refresh network information: {ex.Message}", "OK");
+            
+            SetButtonError(button, "❌ Failed");
+            ShowStatusToast($"Network refresh failed: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
     }
 
     #endregion
 
+    #region Theme-Aware Color System
+    
+    /// <summary>
+    /// Gets theme-appropriate colors that work in both Light and Dark modes
+    /// </summary>
+    private static class ThemeColors
+    {
+        // Status Colors - Theme aware
+        public static Color Success => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#4CAF50")   // Softer green for dark mode
+            : Color.FromArgb("#388E3C");  // Standard green for light mode
+            
+        public static Color Error => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#F44336")   // Softer red for dark mode  
+            : Color.FromArgb("#D32F2F");  // Standard red for light mode
+            
+        public static Color Warning => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#FF9800")   // Softer orange for dark mode
+            : Color.FromArgb("#F57C00");  // Standard orange for light mode
+            
+        public static Color Info => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#2196F3")   // Softer blue for dark mode
+            : Color.FromArgb("#1976D2");  // Standard blue for light mode
+            
+        // Text Colors - High contrast for readability
+        public static Color OnColorText => Colors.White; // Always white text on colored backgrounds
+        
+        public static Color SecondaryText => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#B0B0B0")   // Light gray for dark mode
+            : Color.FromArgb("#666666");  // Dark gray for light mode
+    }
+
+    #endregion
+
+    #region Button State Management
+
+    /// <summary>
+    /// Sets a button to loading state with spinner and custom text
+    /// </summary>
+    private void SetButtonLoading(Button button, string loadingText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.IsEnabled = false;
+            button.Text = loadingText ?? "Loading...";
+            button.BackgroundColor = ThemeColors.Warning;
+            button.TextColor = ThemeColors.OnColorText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button loading state");
+        }
+    }
+    
+    /// <summary>
+    /// Sets a button to success state with green color and checkmark
+    /// Note: Does not auto-reset - caller must handle reset timing
+    /// </summary>
+    private void SetButtonSuccess(Button button, string successText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.Text = successText ?? "✅ Success";
+            button.BackgroundColor = ThemeColors.Success;
+            button.TextColor = ThemeColors.OnColorText;
+            button.IsEnabled = false; // Keep disabled until reset
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button success state");
+        }
+    }
+    
+    /// <summary>
+    /// Sets a button to error state with red color and X mark
+    /// Note: Does not auto-reset - caller must handle reset timing
+    /// </summary>
+    private void SetButtonError(Button button, string errorText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.Text = errorText ?? "❌ Error";
+            button.BackgroundColor = ThemeColors.Error;
+            button.TextColor = ThemeColors.OnColorText;
+            button.IsEnabled = false; // Keep disabled until reset
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button error state");
+        }
+    }
+    
+    /// <summary>
+    /// Resets a button to normal state
+    /// </summary>
+    private void SetButtonNormal(Button button, string originalText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.IsEnabled = true;
+            
+            // Clear background and text colors to restore default theme appearance
+            button.ClearValue(Button.BackgroundColorProperty);
+            button.ClearValue(Button.TextColorProperty);
+            
+            // Restore original text
+            if (!string.IsNullOrEmpty(originalText))
+            {
+                button.Text = originalText;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button normal state");
+        }
+    }
+    
+    /// <summary>
+    /// Shows a toast-style message in the status bar with color coding
+    /// </summary>
+    private async void ShowStatusToast(string message, ToastType type = ToastType.Info, int durationMs = 3000)
+    {
+        if (StatusLabel == null) return;
+        
+        try
+        {
+            var originalText = StatusLabel.Text;
+            var originalColor = StatusLabel.TextColor;
+            
+            // Set status with color coding
+            StatusLabel.Text = GetToastIcon(type) + " " + message;
+            StatusLabel.TextColor = GetToastColor(type);
+            
+            // Reset after duration
+            await Task.Delay(durationMs);
+            
+            StatusLabel.Text = originalText;
+            StatusLabel.TextColor = originalColor;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error showing status toast");
+        }
+    }
+    
+    /// <summary>
+    /// Toast notification types
+    /// </summary>
+    private enum ToastType
+    {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
+    
+    /// <summary>
+    /// Gets icon for toast type
+    /// </summary>
+    private string GetToastIcon(ToastType type)
+    {
+        return type switch
+        {
+            ToastType.Success => "✅",
+            ToastType.Error => "❌",
+            ToastType.Warning => "⚠️",
+            ToastType.Info => "ℹ️",
+            _ => "ℹ️"
+        };
+    }
+    
+    /// <summary>
+    /// Gets theme-aware color for toast type
+    /// </summary>
+    private Color GetToastColor(ToastType type)
+    {
+        return type switch
+        {
+            ToastType.Success => ThemeColors.Success,
+            ToastType.Error => ThemeColors.Error,
+            ToastType.Warning => ThemeColors.Warning,
+            ToastType.Info => ThemeColors.Info,
+            _ => ThemeColors.SecondaryText
+        };
+    }
+
+    #endregion
 
 }

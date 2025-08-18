@@ -134,13 +134,13 @@ public partial class MainPage : ContentPage
         // Pre-flight validation
         if (!_viewModel.IsConnected)
         {
-            ShowStatusToast("⚠️ Not connected to device. Connect first.", ToastType.Warning);
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
             return;
         }
         
         if (_viewModel.IsBusy)
         {
-            ShowStatusToast("⚠️ Another operation is in progress. Please wait.", ToastType.Warning);
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
             return;
         }
         
@@ -151,7 +151,7 @@ public partial class MainPage : ContentPage
             DeviceInfoText.TextColor = ThemeColors.SecondaryText;
             
             SetButtonLoading(button, "Getting Info...");
-            ShowStatusToast("📡 Retrieving device information...", ToastType.Info);
+            ShowStatusToast("Retrieving device information...", ToastType.Info);
             
             var success = await _viewModel.GetDeviceInfoAsync();
             if (success)
@@ -161,7 +161,7 @@ public partial class MainPage : ContentPage
                 DeviceInfoText.TextColor = ThemeColors.SuccessText;
                 
                 SetButtonSuccess(button, "✅ Got Info");
-                ShowStatusToast("✅ Device info retrieved successfully", ToastType.Success);
+                ShowStatusToast("Device info retrieved successfully", ToastType.Success);
                 
                 // Auto-reset button after success
                 _ = Task.Run(async () =>
@@ -180,7 +180,7 @@ public partial class MainPage : ContentPage
                 DeviceInfoText.TextColor = ThemeColors.ErrorText;
                 
                 SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"❌ Failed: {_viewModel.StatusMessage}", ToastType.Error);
+                ShowStatusToast($"Failed: {_viewModel.StatusMessage}", ToastType.Error);
                 
                 // Auto-reset button after error
                 _ = Task.Run(async () =>
@@ -202,7 +202,7 @@ public partial class MainPage : ContentPage
             DeviceInfoText.TextColor = ThemeColors.ErrorText;
             
             SetButtonError(button, "❌ Error");
-            ShowStatusToast($"💥 Error: {ex.Message}", ToastType.Error);
+            ShowStatusToast($"Error: {ex.Message}", ToastType.Error);
             
             // Auto-reset button after error
             _ = Task.Run(async () =>
@@ -220,6 +220,20 @@ public partial class MainPage : ContentPage
     private async void OnKeepAliveClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
+        const string originalButtonText = "Keep Alive";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
         
         try
         {
@@ -232,11 +246,31 @@ public partial class MainPage : ContentPage
             {
                 SetButtonSuccess(button, "✅ Alive");
                 ShowStatusToast("Device responded to keep-alive", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1500);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
                 SetButtonError(button, "❌ No Response");
                 ShowStatusToast($"Keep-alive failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
@@ -244,20 +278,37 @@ public partial class MainPage : ContentPage
             _logger.LogError(ex, "Error sending keep alive");
             SetButtonError(button, "❌ Error");
             ShowStatusToast($"Keep-alive error: {ex.Message}", ToastType.Error);
-        }
-        finally
-        {
-            await Task.Delay(100);
-            if (!button?.IsEnabled == true)
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
             {
-                SetButtonNormal(button, "Keep Alive");
-            }
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnGetWifiSettingsClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
+        const string originalButtonText = "Get WiFi Settings";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
         
         try
         {
@@ -268,14 +319,36 @@ public partial class MainPage : ContentPage
             var success = await _viewModel.GetWifiSettingsAsync();
             if (success)
             {
+                // Update UI with retrieved WiFi settings
                 SsidEntry.Text = _viewModel.Ssid;
+                
                 SetButtonSuccess(button, "✅ Got WiFi");
                 ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
                 SetButtonError(button, "❌ Failed");
                 ShowStatusToast($"Failed to get WiFi: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
@@ -283,15 +356,18 @@ public partial class MainPage : ContentPage
             _logger.LogError(ex, "Error getting WiFi settings");
             SetButtonError(button, "❌ Error");
             ShowStatusToast($"WiFi error: {ex.Message}", ToastType.Error);
-        }
-        finally
-        {
-            await Task.Delay(100);
-            if (!button?.IsEnabled == true)
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
             {
-                SetButtonNormal(button, "Get WiFi Settings");
-            }
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnSleepDeviceClicked(object sender, EventArgs e)
@@ -314,6 +390,20 @@ public partial class MainPage : ContentPage
     private async void OnStartScanClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
+        const string originalButtonText = "Start Scan";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
         
         try
         {
@@ -326,11 +416,31 @@ public partial class MainPage : ContentPage
             {
                 SetButtonSuccess(button, "✅ Started");
                 ShowStatusToast("Measurement scan started successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
                 SetButtonError(button, "❌ Failed");
                 ShowStatusToast($"Scan start failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
@@ -338,77 +448,228 @@ public partial class MainPage : ContentPage
             _logger.LogError(ex, "Error starting scan");
             SetButtonError(button, "❌ Error");
             ShowStatusToast($"Scan error: {ex.Message}", ToastType.Error);
-        }
-        finally
-        {
-            await Task.Delay(100);
-            if (!button?.IsEnabled == true)
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
             {
-                SetButtonNormal(button, "Start Scan");
-            }
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnStopScanClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        const string originalButtonText = "Stop Scan";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
+        
         try
         {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Stopping...");
+            ShowStatusToast("Stopping measurement scan...", ToastType.Info);
+            
             var success = await _viewModel.StopScanAsync();
-            if (!success)
+            if (success)
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonSuccess(button, "✅ Stopped");
+                ShowStatusToast("Measurement scan stopped successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1500);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
+            }
+            else
+            {
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Stop scan failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping scan");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"Stop scan error: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnGetMeasurementClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
+        const string originalButtonText = "Get Measurement";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
         
         try
         {
-            // Immediate visual feedback
+            // Clear previous content and show immediate visual feedback
+            MeasurementText.Text = "Loading measurement data...";
+            MeasurementText.TextColor = ThemeColors.SecondaryText;
+            
             SetButtonLoading(button, "Reading...");
             ShowStatusToast("Getting measurement data...", ToastType.Info);
             
             var success = await _viewModel.GetMeasurementAsync();
             if (success)
             {
+                // Update display with retrieved data
                 MeasurementText.Text = _viewModel.MeasurementText;
+                MeasurementText.TextColor = ThemeColors.SuccessText;
+                
                 SetButtonSuccess(button, "✅ Got Data");
                 ShowStatusToast("Measurement data retrieved successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
+                // Show error in the display area
+                MeasurementText.Text = $"❌ Failed to retrieve measurement data:\n{_viewModel.StatusMessage}";
+                MeasurementText.TextColor = ThemeColors.ErrorText;
+                
                 SetButtonError(button, "❌ No Data");
                 ShowStatusToast($"Measurement failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting measurement");
+            
+            // Show error in display area
+            MeasurementText.Text = $"💥 Unexpected error:\n{ex.Message}";
+            MeasurementText.TextColor = ThemeColors.ErrorText;
+            
             SetButtonError(button, "❌ Error");
             ShowStatusToast($"Measurement error: {ex.Message}", ToastType.Error);
-        }
-        finally
-        {
-            await Task.Delay(100);
-            if (!button?.IsEnabled == true)
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
             {
-                SetButtonNormal(button, "Get Measurement");
-            }
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnGetLiveReadingClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        const string originalButtonText = "Get Live Reading";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
+        
+        // Input validation
+        if (string.IsNullOrWhiteSpace(StartIndexEntry.Text) || !int.TryParse(StartIndexEntry.Text, out int startIndex) || startIndex < 0)
+        {
+            ShowStatusToast("Please enter a valid start index (0 or greater)", ToastType.Warning);
+            StartIndexEntry.Focus();
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(NumPointsEntry.Text) || !int.TryParse(NumPointsEntry.Text, out int numPoints) || numPoints <= 0)
+        {
+            ShowStatusToast("Please enter a valid number of points (1 or greater)", ToastType.Warning);
+            NumPointsEntry.Focus();
+            return;
+        }
+        
         try
         {
+            // Clear previous content and show immediate visual feedback
+            MeasurementText.Text = "Loading live reading data...";
+            MeasurementText.TextColor = ThemeColors.SecondaryText;
+            
+            SetButtonLoading(button, "Reading...");
+            ShowStatusToast("Getting live reading data...", ToastType.Info);
+            
             // Update ViewModel properties from UI
             _viewModel.StartIndex = StartIndexEntry.Text ?? "0";
             _viewModel.NumPoints = NumPointsEntry.Text ?? "100";
@@ -416,33 +677,95 @@ public partial class MainPage : ContentPage
             var success = await _viewModel.GetLiveReadingAsync();
             if (success)
             {
+                // Update display with retrieved data
                 MeasurementText.Text = _viewModel.MeasurementText;
+                MeasurementText.TextColor = ThemeColors.SuccessText;
+                
+                SetButtonSuccess(button, "✅ Got Reading");
+                ShowStatusToast("Live reading data retrieved successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                // Show error in the display area
+                MeasurementText.Text = $"❌ Failed to retrieve live reading:\n{_viewModel.StatusMessage}";
+                MeasurementText.TextColor = ThemeColors.ErrorText;
+                
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Live reading failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting live reading");
-            await DisplayAlert("Error", ex.Message, "OK");
+            
+            // Show error in display area
+            MeasurementText.Text = $"💥 Unexpected error:\n{ex.Message}";
+            MeasurementText.TextColor = ThemeColors.ErrorText;
+            
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"Live reading error: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnSetWifiSettingsClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
+        const string originalButtonText = "Set WiFi Settings";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
+        
+        // Input validation
+        if (string.IsNullOrWhiteSpace(SsidEntry.Text))
+        {
+            ShowStatusToast("Please enter an SSID", ToastType.Warning);
+            SsidEntry.Focus();
+            return;
+        }
         
         try
         {
-            // Validate input first
-            if (string.IsNullOrWhiteSpace(SsidEntry.Text))
-            {
-                ShowStatusToast("Please enter an SSID", ToastType.Warning);
-                return;
-            }
-            
             // Immediate visual feedback
             SetButtonLoading(button, "Setting WiFi...");
             ShowStatusToast("Configuring WiFi settings...", ToastType.Info);
@@ -456,11 +779,31 @@ public partial class MainPage : ContentPage
             {
                 SetButtonSuccess(button, "✅ WiFi Set");
                 ShowStatusToast("WiFi settings configured successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
                 SetButtonError(button, "❌ Failed");
                 ShowStatusToast($"WiFi setup failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
@@ -468,15 +811,18 @@ public partial class MainPage : ContentPage
             _logger.LogError(ex, "Error setting WiFi settings");
             SetButtonError(button, "❌ Error");
             ShowStatusToast($"WiFi error: {ex.Message}", ToastType.Error);
-        }
-        finally
-        {
-            await Task.Delay(100);
-            if (!button?.IsEnabled == true)
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
             {
-                SetButtonNormal(button, "Set WiFi Settings");
-            }
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnRestartWifiClicked(object sender, EventArgs e)
