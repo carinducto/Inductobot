@@ -127,6 +127,10 @@ public partial class DeviceConnectionPage : ContentPage
             
             if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
             {
+                // Ensure existing devices have proper initial connection state
+                device.ConnectionState = ConnectionState.Disconnected;
+                device.LastSeen = DateTime.Now;
+                
                 _devices.Add(device);
                 _logger.LogInformation("Added existing device to UI: {DeviceName}", device.Name);
             }
@@ -177,13 +181,39 @@ public partial class DeviceConnectionPage : ContentPage
                     
                     if (!_devices.Any(d => d.IpAddress == device.IpAddress && d.Port == device.Port))
                     {
+                        // Ensure new devices start with proper connection state
+                        device.ConnectionState = ConnectionState.Disconnected;
+                        device.LastSeen = DateTime.Now;
+                        
                         _devices.Add(device);
                         _logger.LogInformation("Added device to UI collection. Total devices: {Count}", _devices.Count);
                         UpdateDeviceCount();
                     }
                     else
                     {
-                        _logger.LogInformation("Device already exists in UI collection: {DeviceName}", device.Name);
+                        // Update existing device information while preserving connection state
+                        var existingDevice = _devices.First(d => d.IpAddress == device.IpAddress && d.Port == device.Port);
+                        existingDevice.Name = device.Name;
+                        existingDevice.FirmwareVersion = device.FirmwareVersion;
+                        existingDevice.SerialNumber = device.SerialNumber;
+                        existingDevice.LastSeen = DateTime.Now;
+                        existingDevice.IsOnline = device.IsOnline;
+                        
+                        // Only update connection state if device is not currently connected
+                        if (existingDevice.ConnectionState == ConnectionState.Disconnected)
+                        {
+                            existingDevice.ConnectionState = device.IsOnline ? ConnectionState.Disconnected : ConnectionState.Disconnected;
+                        }
+                        
+                        // Force UI update
+                        var index = _devices.IndexOf(existingDevice);
+                        if (index >= 0)
+                        {
+                            _devices.RemoveAt(index);
+                            _devices.Insert(index, existingDevice);
+                        }
+                        
+                        _logger.LogInformation("Updated existing device in UI collection: {DeviceName}", device.Name);
                     }
                 }
                 catch (Exception ex)
@@ -546,6 +576,20 @@ public partial class DeviceConnectionPage : ContentPage
             StatusLabel.Text = "Connecting...";
             ConnectionInfoLabel.Text = $"{ipAddress}:{port}";
             
+            // Update the device status to show connecting state
+            var targetDevice = _devices.FirstOrDefault(d => d.IpAddress == ipAddress && d.Port == port);
+            if (targetDevice != null)
+            {
+                targetDevice.ConnectionState = ConnectionState.Connecting;
+                // Force UI refresh
+                var index = _devices.IndexOf(targetDevice);
+                if (index >= 0)
+                {
+                    _devices.RemoveAt(index);
+                    _devices.Insert(index, targetDevice);
+                }
+            }
+            
             var connectTask = _deviceService.ConnectToDeviceAsync(ipAddress, port, _connectionCts.Token);
             
             // Create timeout with user option to cancel
@@ -564,6 +608,18 @@ public partial class DeviceConnectionPage : ContentPage
                 {
                     _connectionCts.Cancel();
                     StatusLabel.Text = "Connection cancelled";
+                    
+                    // Update device status to show cancelled/error state
+                    if (targetDevice != null)
+                    {
+                        targetDevice.ConnectionState = ConnectionState.Error;
+                        var index = _devices.IndexOf(targetDevice);
+                        if (index >= 0)
+                        {
+                            _devices.RemoveAt(index);
+                            _devices.Insert(index, targetDevice);
+                        }
+                    }
                     return;
                 }
                 
@@ -790,6 +846,9 @@ public partial class DeviceConnectionPage : ContentPage
                 {
                     StatusLabel.Text = state.ToString();
                     
+                    // Update the connected device in the discovered devices list
+                    UpdateConnectedDeviceStatus(state);
+                    
                     switch (state)
                     {
                         case ConnectionState.Connected:
@@ -816,6 +875,71 @@ public partial class DeviceConnectionPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in OnConnectionStateChanged event handler");
+        }
+    }
+    
+    /// <summary>
+    /// Updates the connection state of the currently connected device in the discovered devices list
+    /// </summary>
+    private void UpdateConnectedDeviceStatus(ConnectionState state)
+    {
+        try
+        {
+            if (_deviceService?.CurrentDevice != null)
+            {
+                var connectedDevice = _devices.FirstOrDefault(d => 
+                    d.IpAddress == _deviceService.CurrentDevice.IpAddress && 
+                    d.Port == _deviceService.CurrentDevice.Port);
+                
+                if (connectedDevice != null)
+                {
+                    connectedDevice.ConnectionState = state;
+                    connectedDevice.IsOnline = state == ConnectionState.Connected;
+                    
+                    // Update last connected time for successful connections
+                    if (state == ConnectionState.Connected)
+                    {
+                        connectedDevice.LastConnected = DateTime.Now;
+                    }
+                    
+                    // Force UI refresh by triggering collection change notification
+                    var index = _devices.IndexOf(connectedDevice);
+                    if (index >= 0)
+                    {
+                        _devices.RemoveAt(index);
+                        _devices.Insert(index, connectedDevice);
+                    }
+                    
+                    // Refresh the UI to show updated status
+                    UpdateDeviceCount();
+                }
+            }
+            
+            // Reset all other devices to disconnected if a new connection is made
+            if (state == ConnectionState.Connected && _deviceService?.CurrentDevice != null)
+            {
+                foreach (var device in _devices)
+                {
+                    if (device.IpAddress != _deviceService.CurrentDevice.IpAddress || 
+                        device.Port != _deviceService.CurrentDevice.Port)
+                    {
+                        device.ConnectionState = ConnectionState.Disconnected;
+                        device.IsOnline = false;
+                    }
+                }
+                
+                // Force refresh of all items
+                var allDevices = _devices.ToList();
+                _devices.Clear();
+                foreach (var device in allDevices)
+                {
+                    _devices.Add(device);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating connected device status");
         }
     }
     

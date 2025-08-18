@@ -12,10 +12,26 @@ public class UASDeviceInfo
     public DateTime LastConnected { get; set; }
     public DateTime LastSeen { get; set; }
     public bool IsOnline { get; set; }
+    public ConnectionState ConnectionState { get; set; } = ConnectionState.Disconnected;
     public Dictionary<string, object> CustomProperties { get; set; } = new();
     
     // Additional property for UI display purposes
     public string? DeviceType { get; set; }
+    
+    /// <summary>
+    /// Gets the traffic light color based on connection state
+    /// </summary>
+    public string TrafficLightColor => ConnectionState switch
+    {
+        ConnectionState.Connected => "Green",
+        ConnectionState.Connecting => "Orange", 
+        ConnectionState.Reconnecting => "Orange",
+        ConnectionState.Disconnecting => "Orange",
+        ConnectionState.Error => "Red",
+        ConnectionState.Timeout => "Red",
+        ConnectionState.Unauthorized => "Red",
+        _ => "Gray"
+    };
 }
 
 public enum DeviceType

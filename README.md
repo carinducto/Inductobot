@@ -54,9 +54,9 @@ dotnet run --framework net9.0-windows10.0.19041.0
 
 ## Usage
 
-### Device Connection
+### UAS-WAND Connection
 1. Launch the application
-2. Navigate to the "Device Connection" tab
+2. Navigate to the "UAS-WAND Connection" tab
 3. Use "Scan Network" to discover UAS devices automatically
 4. Or manually add devices using IP address and port
 5. Click "Connect" to establish TCP/IP connection
@@ -76,7 +76,7 @@ dotnet run --framework net9.0-windows10.0.19041.0
 - **ByteSnapTcpClient**: Core TCP/IP communication client
 - **DeviceDiscoveryService**: Network scanning and device management
 - **UASDeviceInfo**: Device information and status model
-- **Device Connection Page**: UI for device discovery and connection
+- **UAS-WAND Connection Page**: UI for device discovery and connection
 - **UAS-WAND Control Page**: UI for device operations and commands
 
 ### Communication Protocol

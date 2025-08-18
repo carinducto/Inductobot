@@ -6,17 +6,12 @@
 
     <Grid RowDefinitions="Auto,*,Auto" Padding="20">
         
-        <!-- Header Section -->
-        <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label Text="UAS-WAND Control Dashboard" 
-                   FontSize="32" 
-                   FontAttributes="Bold"
-                   HorizontalOptions="Center"/>
-            
-            <Frame BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
-                   BorderColor="Transparent"
-                   Padding="15"
-                   Margin="0,10">
+        <!-- Connection Status Section -->
+        <Frame Grid.Row="0"
+               BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+               BorderColor="Transparent"
+               Padding="15"
+               Margin="0,0,0,10">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
                     <Ellipse x:Name="ConnectionStatusIndicator"
                            Grid.Column="0"
@@ -46,7 +41,6 @@
                           Grid.Column="2"/>
                 </Grid>
             </Frame>
-        </VerticalStackLayout>
         
         <!-- Control Panels -->
         <ScrollView Grid.Row="1" Margin="0,10">

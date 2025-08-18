@@ -9,7 +9,7 @@
 
     <TabBar>
         <ShellContent
-            Title="Device Connection"
+            Title="UAS-WAND Connection"
             Icon="dotnet_bot.png"
             ContentTemplate="{DataTemplate views:DeviceConnectionPage}"
             Route="DeviceConnection" />
