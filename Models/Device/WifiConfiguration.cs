@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Inductobot.Models.Device;
 
 /// <summary>

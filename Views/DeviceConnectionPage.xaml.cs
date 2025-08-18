@@ -11,6 +11,7 @@ public partial class DeviceConnectionPage : ContentPage
 {
     private readonly IUasWandDiscoveryService _discoveryService;
     private readonly IUasWandDeviceService _deviceService;
+    private readonly IUasWandApiService _apiService;
     private readonly INetworkInfoService _networkInfoService;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
@@ -21,12 +22,14 @@ public partial class DeviceConnectionPage : ContentPage
     public DeviceConnectionPage(
         IUasWandDiscoveryService discoveryService,
         IUasWandDeviceService deviceService,
+        IUasWandApiService apiService,
         INetworkInfoService networkInfoService,
         ILogger<DeviceConnectionPage> logger)
     {
         InitializeComponent();
         _discoveryService = discoveryService;
         _deviceService = deviceService;
+        _apiService = apiService;
         _networkInfoService = networkInfoService;
         _logger = logger;
         
@@ -39,6 +42,7 @@ public partial class DeviceConnectionPage : ContentPage
     public DeviceConnectionPage() : this(
         GetService<IUasWandDiscoveryService>(),
         GetService<IUasWandDeviceService>(),
+        GetService<IUasWandApiService>(),
         GetService<INetworkInfoService>(),
         GetService<ILogger<DeviceConnectionPage>>())
     {
@@ -600,31 +604,23 @@ public partial class DeviceConnectionPage : ContentPage
             bool connected;
             if (completedTask == timeoutTask)
             {
-                var userChoice = await SafeDisplayAlert("Connection Timeout", 
-                    $"Connection to {ipAddress}:{port} is taking longer than expected. Continue waiting?", 
-                    "Keep Trying", "Cancel");
+                // Connection timed out - show status via traffic light, no interrupting dialog
+                _connectionCts.Cancel();
+                StatusLabel.Text = "Connection timeout";
+                ShowStatusToast($"Connection to {ipAddress}:{port} timed out after 15 seconds", ToastType.Warning);
                 
-                if (!userChoice)
+                // Update device status to show timeout state
+                if (targetDevice != null)
                 {
-                    _connectionCts.Cancel();
-                    StatusLabel.Text = "Connection cancelled";
-                    
-                    // Update device status to show cancelled/error state
-                    if (targetDevice != null)
+                    targetDevice.ConnectionState = ConnectionState.Timeout;
+                    var index = _devices.IndexOf(targetDevice);
+                    if (index >= 0)
                     {
-                        targetDevice.ConnectionState = ConnectionState.Error;
-                        var index = _devices.IndexOf(targetDevice);
-                        if (index >= 0)
-                        {
-                            _devices.RemoveAt(index);
-                            _devices.Insert(index, targetDevice);
-                        }
+                        _devices.RemoveAt(index);
+                        _devices.Insert(index, targetDevice);
                     }
-                    return;
                 }
-                
-                // Wait for connection to complete if user chose to continue
-                connected = await connectTask;
+                return;
             }
             else
             {
@@ -635,7 +631,32 @@ public partial class DeviceConnectionPage : ContentPage
             if (connected)
             {
                 StatusLabel.Text = "Connected";
-                await SafeDisplayAlert("Success", $"Connected to device at {ipAddress}:{port}", "OK");
+                // Traffic light indicator shows green status - no pop-up interruption needed
+                
+                // Automatically retrieve WiFi settings after successful connection
+                try
+                {
+                    ShowStatusToast("Retrieving WiFi settings...", ToastType.Info);
+                    _logger.LogInformation("Automatically retrieving WiFi settings after connection");
+                    
+                    var wifiResponse = await _apiService.GetWifiSettingsAsync();
+                    if (wifiResponse.IsSuccess && wifiResponse.Data != null)
+                    {
+                        _logger.LogInformation("WiFi settings retrieved successfully: SSID={SSID}, Enabled={Enabled}", 
+                            wifiResponse.Data.Ssid, wifiResponse.Data.Enabled);
+                        ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to retrieve WiFi settings: {Error}", wifiResponse.Message);
+                        ShowStatusToast("WiFi settings retrieval failed", ToastType.Warning);
+                    }
+                }
+                catch (Exception wifiEx)
+                {
+                    _logger.LogError(wifiEx, "Error retrieving WiFi settings after connection");
+                    ShowStatusToast("WiFi settings retrieval error", ToastType.Warning);
+                }
                 
                 // Navigate to UAS-WAND control page
                 await Shell.Current.GoToAsync("//DeviceControl");
@@ -643,7 +664,7 @@ public partial class DeviceConnectionPage : ContentPage
             else
             {
                 StatusLabel.Text = "Connection failed";
-                await SafeDisplayAlert("Error", $"Failed to connect to device at {ipAddress}:{port}", "OK");
+                // Traffic light indicator shows red status - no pop-up interruption needed
             }
         }
         catch (OperationCanceledException)
@@ -655,7 +676,20 @@ public partial class DeviceConnectionPage : ContentPage
         {
             StatusLabel.Text = "Connection error";
             _logger.LogError(ex, "Error connecting to device");
-            await SafeDisplayAlert("Error", "Connection failed. Please check device connectivity and try again.", "OK");
+            ShowStatusToast($"Connection failed: {ex.Message}", ToastType.Error);
+            
+            // Update device status to show error state
+            var targetDevice = _devices.FirstOrDefault(d => d.IpAddress == ipAddress && d.Port == port);
+            if (targetDevice != null)
+            {
+                targetDevice.ConnectionState = ConnectionState.Error;
+                var index = _devices.IndexOf(targetDevice);
+                if (index >= 0)
+                {
+                    _devices.RemoveAt(index);
+                    _devices.Insert(index, targetDevice);
+                }
+            }
         }
         finally
         {

@@ -126,3 +126,9 @@ bld/
 
 # JetBrains Rider
 *.sln.iml
+
+# Windows command artifacts
+NUL
+nul
+NUL.*
+nul.*

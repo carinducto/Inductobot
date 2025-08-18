@@ -20,6 +20,7 @@ public class UasWandHttpsSimulator : IDisposable
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _listenerTask;
     private readonly int _port;
+    private readonly JsonSerializerOptions _jsonOptions;
     
     // Simulated device state
     private readonly UASDeviceInfo _deviceInfo;
@@ -39,6 +40,13 @@ public class UasWandHttpsSimulator : IDisposable
         _logger = logger;
         _port = port;
         
+        // Initialize JSON options to match HTTP API service expectations - MUST use camelCase!
+        _jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        };
+        
         // Initialize simulated device info
         _deviceInfo = new UASDeviceInfo
         {
@@ -55,6 +63,7 @@ public class UasWandHttpsSimulator : IDisposable
         _wifiConfig = new WifiConfiguration
         {
             Ssid = "SimulatedNetwork",
+            Password = "admin", // Add password for proper WiFi configuration
             Enabled = true,
             Channel = 6,
             IpAddress = _deviceInfo.IpAddress
@@ -247,106 +256,78 @@ public class UasWandHttpsSimulator : IDisposable
         response.OutputStream.Close();
     }
 
+    /// <summary>
+    /// Creates a properly formatted ApiResponse that matches the HTTP API service expectations.
+    /// CRITICAL: Must create actual ApiResponse<T> instance to ensure proper serialization/deserialization.
+    /// </summary>
+    private string CreateApiResponse<T>(T data, bool isSuccess = true, string message = "", string errorCode = "")
+    {
+        // Create actual ApiResponse<T> instance instead of anonymous object
+        // This ensures the property names match exactly when serialized/deserialized
+        var responseWrapper = new ApiResponse<T>
+        {
+            IsSuccess = isSuccess,
+            Data = data,
+            Message = message,
+            ErrorCode = errorCode,
+            Timestamp = DateTime.UtcNow,
+            Extensions = new Dictionary<string, object>()
+        };
+        
+        var json = JsonSerializer.Serialize(responseWrapper, _jsonOptions);
+        _logger.LogDebug("HTTP CreateApiResponse - Serialized JSON: {Json}", json);
+        return json;
+    }
+
     private string CreateErrorResponse(string message, string errorCode)
     {
-        return JsonSerializer.Serialize(new 
-        { 
-            isSuccess = false, 
-            data = (object?)null,
-            message = message,
-            errorCode = errorCode,
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse<object?>(null, false, message, errorCode);
     }
 
     // HTTP endpoint handlers (same logic as TCP version but adapted for HTTP)
     
     private string HandleGetDeviceInfo()
     {
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = _deviceInfo,
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(_deviceInfo);
     }
 
     private string HandlePing()
     {
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = new CodedResponse { Code = 0, Message = "pong" },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "pong" });
     }
 
     private string HandleGetWifiSettings()
     {
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = _wifiConfig,
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        _logger.LogDebug("HTTP HandleGetWifiSettings - Current WiFi config: SSID={Ssid}, Password={Password}, Enabled={Enabled}, Channel={Channel}, IP={IP}", 
+            _wifiConfig.Ssid, _wifiConfig.Password, _wifiConfig.Enabled, _wifiConfig.Channel, _wifiConfig.IpAddress);
+            
+        var response = CreateApiResponse(_wifiConfig);
+        _logger.LogDebug("HTTP HandleGetWifiSettings - Sending response: {Response}", response);
+        return response;
     }
 
     private string HandleSetWifiSettings(HttpListenerRequest request)
     {
         // Read request body for WiFi settings
         _logger.LogDebug("WiFi settings update requested");
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = new CodedResponse { Code = 0, Message = "WiFi settings updated" },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi settings updated" });
     }
 
     private string HandleRestartWifi()
     {
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = new CodedResponse { Code = 0, Message = "WiFi restarted" },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi restarted" });
     }
 
     private string HandleStartScan(HttpListenerRequest request)
     {
         _logger.LogDebug("Scan start requested");
         _isScanning = true;
-        return JsonSerializer.Serialize(new
+        return CreateApiResponse(new ScanStatus
         {
-            isSuccess = true,
-            data = new ScanStatus
-            {
-                Status = 1, // 1 = scanning
-                Progress = 0,
-                Message = "Scan started",
-                TotalPoints = 1000
-            },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
+            Status = 1, // 1 = scanning
+            Progress = 0,
+            Message = "Scan started",
+            TotalPoints = 1000
         });
     }
 
@@ -356,56 +337,32 @@ public class UasWandHttpsSimulator : IDisposable
         if (progress >= 100)
             _isScanning = false;
             
-        return JsonSerializer.Serialize(new
+        return CreateApiResponse(new ScanStatus
         {
-            isSuccess = true,
-            data = new ScanStatus
-            {
-                Status = _isScanning ? 1 : 0, // 1 = scanning, 0 = completed
-                Progress = progress,
-                Message = _isScanning ? "Scanning in progress" : "Scan completed",
-                TotalPoints = 1000
-            },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
+            Status = _isScanning ? 1 : 0, // 1 = scanning, 0 = completed
+            Progress = progress,
+            Message = _isScanning ? "Scanning in progress" : "Scan completed",
+            TotalPoints = 1000
         });
     }
 
     private string HandleStopScan()
     {
         _isScanning = false;
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = new CodedResponse { Code = 0, Message = "Scan stopped" },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "Scan stopped" });
     }
 
     private string HandleGetMeasurement()
     {
-        return JsonSerializer.Serialize(new
+        return CreateApiResponse(new
         {
-            isSuccess = true,
-            data = new
-            {
-                timestamp = DateTime.UtcNow,
-                measurements = new object[]
-                {
-                    new { sensor = "temperature", value = 23.5, unit = "°C" },
-                    new { sensor = "humidity", value = 45.2, unit = "%" },
-                    new { sensor = "signal", value = Random.Shared.Next(50, 100), unit = "dBm" }
-                }
-            },
-            message = "",
-            errorCode = "",
             timestamp = DateTime.UtcNow,
-            extensions = new { }
+            measurements = new object[]
+            {
+                new { sensor = "temperature", value = 23.5, unit = "°C" },
+                new { sensor = "humidity", value = 45.2, unit = "%" },
+                new { sensor = "signal", value = Random.Shared.Next(50, 100), unit = "dBm" }
+            }
         });
     }
 
@@ -445,34 +402,18 @@ public class UasWandHttpsSimulator : IDisposable
             .Select(i => Random.Shared.NextDouble() * 100)
             .ToArray();
             
-        return JsonSerializer.Serialize(new
+        return CreateApiResponse(new
         {
-            isSuccess = true,
-            data = new
-            {
-                startIndex = startIndex,
-                numPoints = dataPoints.Length,
-                data = dataPoints,
-                timestamp = DateTime.UtcNow
-            },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
+            startIndex = startIndex,
+            numPoints = dataPoints.Length,
+            data = dataPoints,
+            timestamp = DateTime.UtcNow
         });
     }
 
     private string HandleSleep()
     {
-        return JsonSerializer.Serialize(new
-        {
-            isSuccess = true,
-            data = new CodedResponse { Code = 0, Message = "Device entering sleep mode" },
-            message = "",
-            errorCode = "",
-            timestamp = DateTime.UtcNow,
-            extensions = new { }
-        });
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "Device entering sleep mode" });
     }
 
     public void Dispose()

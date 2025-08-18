@@ -7,27 +7,24 @@ namespace Inductobot;
 public partial class MainPage : ContentPage
 {
     private readonly UasWandControlViewModel _viewModel;
-    private readonly SimulatorControlViewModel _simulatorViewModel;
     private readonly ILogger<MainPage> _logger;
     private bool _isPasswordVisible = false;
     private CancellationTokenSource? _passwordVisibilityTimeoutCts;
 
-    public MainPage(UasWandControlViewModel viewModel, SimulatorControlViewModel simulatorViewModel, ILogger<MainPage> logger)
+    public MainPage(UasWandControlViewModel viewModel, ILogger<MainPage> logger)
     {
         InitializeComponent();
         _viewModel = viewModel;
-        _simulatorViewModel = simulatorViewModel;
         _logger = logger;
         BindingContext = _viewModel;
         
         // Subscribe to ViewModel property changes
         _viewModel.PropertyChanged += OnPropertyChanged;
-        _simulatorViewModel.PropertyChanged += OnSimulatorPropertyChanged;
         
         UpdateConnectionUI();
-        UpdateSimulatorUI();
         UpdateScanningStatusUI(ScanningState.Idle);
         UpdateWifiSettingsDisplay();
+        
     }
 
     protected override void OnDisappearing()
@@ -39,10 +36,6 @@ public partial class MainPage : ContentPage
             // NOTE: Don't dispose - ViewModel is now Singleton and should persist
         }
         
-        if (_simulatorViewModel != null)
-        {
-            _simulatorViewModel.PropertyChanged -= OnSimulatorPropertyChanged;
-        }
         
         // Clean up password visibility timeout and hide password for security
         CancelPasswordVisibilityTimeout();
@@ -69,6 +62,7 @@ public partial class MainPage : ContentPage
             }
             else if (e.PropertyName == nameof(_viewModel.HasWifiConfiguration) || e.PropertyName == nameof(_viewModel.CurrentWifiConfiguration))
             {
+                _logger.LogDebug("PropertyChanged for WiFi settings: {PropertyName}", e.PropertyName);
                 MainThread.BeginInvokeOnMainThread(() => 
                 {
                     try
@@ -104,11 +98,24 @@ public partial class MainPage : ContentPage
             
             if (_viewModel.IsConnected)
             {
-                DeviceInfoLabel.Text = "UAS-WAND Device Connected";
+                // Determine device type and update display accordingly
+                var deviceName = _viewModel.CurrentDevice?.Name ?? "Unknown Device";
+                bool isSimulator = deviceName.Contains("Simulator", StringComparison.OrdinalIgnoreCase);
+                
+                if (isSimulator)
+                {
+                    DeviceInfoLabel.Text = "🔧 Connected to UAS-WAND Simulator";
+                    _logger.LogDebug("Main page traffic light: Connected to simulator device: {DeviceName}", deviceName);
+                }
+                else
+                {
+                    DeviceInfoLabel.Text = "📡 Connected to UAS-WAND Device";
+                    _logger.LogDebug("Main page traffic light: Connected to real device: {DeviceName}", deviceName);
+                }
             }
             else
             {
-                DeviceInfoLabel.Text = "No device selected";
+                DeviceInfoLabel.Text = "No device connected";
             }
         }
         catch (Exception ex)
@@ -139,6 +146,9 @@ public partial class MainPage : ContentPage
     {
         try
         {
+            _logger.LogDebug("UpdateWifiSettingsDisplay called - HasConfig: {HasConfig}, Config: {Config}", 
+                _viewModel.HasWifiConfiguration, _viewModel.CurrentWifiConfiguration?.Ssid ?? "null");
+                
             if (_viewModel.HasWifiConfiguration && _viewModel.CurrentWifiConfiguration != null)
             {
                 // Show the settings content and hide the status message
@@ -152,17 +162,17 @@ public partial class MainPage : ContentPage
                 WifiChannelLabel.Text = config.Channel.ToString();
                 WifiIpAddressLabel.Text = config.IpAddress ?? "N/A";
                 
+                _logger.LogDebug("WiFi UI updated - SSID: {Ssid}, Enabled: {Enabled}", 
+                    config.Ssid, config.Enabled);
+                
                 // Update password display based on visibility state
                 UpdatePasswordDisplay();
                 
-                // Auto-populate the entry fields for easy editing (but don't overwrite if user is typing)
-                if (string.IsNullOrEmpty(SsidEntry.Text) && !string.IsNullOrEmpty(config.Ssid))
-                {
-                    SsidEntry.Text = config.Ssid;
-                }
+                // Entry fields are now bound to ViewModel properties via data binding
             }
             else
             {
+                _logger.LogDebug("No WiFi configuration available - showing status message");
                 // Show the status message and hide the content
                 WifiSettingsStatus.IsVisible = true;
                 WifiSettingsContent.IsVisible = false;
@@ -454,9 +464,7 @@ public partial class MainPage : ContentPage
             var success = await _viewModel.GetWifiSettingsAsync();
             if (success)
             {
-                // Update UI with retrieved WiFi settings
-                SsidEntry.Text = _viewModel.Ssid;
-                
+                // UI will automatically update via data binding
                 SetButtonSuccess(button, "✅ Got WiFi");
                 ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
                 
@@ -679,110 +687,23 @@ public partial class MainPage : ContentPage
         
         await ExecuteButtonOperationAsync(button, async () =>
         {
-            // Update ViewModel properties from UI
-            _viewModel.Ssid = SsidEntry.Text ?? "";
-            _viewModel.Password = PasswordEntry.Text ?? "";
+            // ViewModel properties are automatically updated via data binding
             return await _viewModel.SetWifiSettingsAsync();
         }, config);
     }
 
     private async void OnRestartWifiClicked(object sender, EventArgs e)
     {
-        var confirm = await DisplayAlert("Confirm", "Restart WiFi?", "Yes", "No");
-        if (!confirm) return;
-
-        try
+        await ExecuteButtonOperationAsync(sender as Button, async () => await _viewModel.RestartWifiAsync(), new ButtonOperationConfig
         {
-            // Note: WiFi restart functionality would need to be added to the ViewModel
-            await DisplayAlert("Info", "WiFi restart functionality not yet implemented in new architecture", "OK");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error restarting WiFi");
-            await DisplayAlert("Error", ex.Message, "OK");
-        }
+            RequireConnection = true,
+            LoadingText = "Restarting WiFi...",
+            SuccessText = "WiFi Restarted ✓",
+            OriginalText = "Restart WiFi",
+            SuccessMessage = "WiFi restarted successfully. Settings have been applied.",
+            InfoMessage = "Restarting WiFi chip to apply new settings..."
+        });
     }
-
-    #region Simulator Controls
-
-    private void OnSimulatorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        UpdateSimulatorUI();
-    }
-
-    private void UpdateSimulatorUI()
-    {
-        try
-        {
-            var status = _simulatorViewModel.Status;
-            var isRunning = _simulatorViewModel.IsRunning;
-
-            // Update status indicator
-            var indicator = SimulatorStatusIndicator.Fill as SolidColorBrush;
-            if (indicator != null)
-            {
-                indicator.Color = isRunning ? Colors.Green : Colors.Gray;
-            }
-
-            // Update status text
-            SimulatorStatusLabel.Text = _simulatorViewModel.StatusMessage;
-
-            // Update buttons
-            StartSimulatorButton.IsEnabled = !isRunning && !_simulatorViewModel.IsLoading;
-            StopSimulatorButton.IsEnabled = isRunning && !_simulatorViewModel.IsLoading;
-            StartSimulatorButton.Text = _simulatorViewModel.StartButtonText;
-
-            // Update info display
-            if (status != null)
-            {
-                SimulatorInfoLabel.Text = $"Device: {status.DeviceName}\n" +
-                                        $"Address: {status.IPAddress}:{status.Port}\n" +
-                                        $"Firmware: {status.FirmwareVersion}\n" +
-                                        $"Started: {status.StartTime?.ToString("HH:mm:ss") ?? "N/A"}";
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating simulator UI");
-        }
-    }
-
-    private async void OnStartSimulatorClicked(object sender, EventArgs e)
-    {
-        try
-        {
-            if (_simulatorViewModel.StartCommand.CanExecute(null))
-            {
-                _simulatorViewModel.StartCommand.Execute(null);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error starting simulator");
-            await DisplayAlert("Error", $"Failed to start simulator: {ex.Message}", "OK");
-        }
-    }
-
-    private async void OnStopSimulatorClicked(object sender, EventArgs e)
-    {
-        var confirm = await DisplayAlert("Confirm", "Stop the UAS-WAND simulator?", "Yes", "No");
-        if (!confirm) return;
-
-        try
-        {
-            if (_simulatorViewModel.StopCommand.CanExecute(null))
-            {
-                _simulatorViewModel.StopCommand.Execute(null);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error stopping simulator");
-            await DisplayAlert("Error", $"Failed to stop simulator: {ex.Message}", "OK");
-        }
-    }
-
-    #endregion
 
     #region Theme-Aware Color System
     

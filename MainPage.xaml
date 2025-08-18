@@ -53,7 +53,7 @@
                        Padding="15"
                        IsVisible="True">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="📶 UAS-WAND WiFi Settings" 
+                        <Label Text="⚙️ UAS-WAND WiFi Settings" 
                              FontSize="18" 
                              FontAttributes="Bold"
                              HorizontalOptions="Center"/>
@@ -84,31 +84,48 @@
                             <Label Grid.Column="0" Grid.Row="3" Text="IP Address:" FontSize="14" FontAttributes="Bold"/>
                             <Label Grid.Column="1" Grid.Row="3" x:Name="WifiIpAddressLabel" FontSize="14" FontFamily="Monospace"/>
                             
-                            <Label Grid.Column="0" Grid.Row="4" Text="Password:" FontSize="14" FontAttributes="Bold"/>
-                            <Grid Grid.Column="1" Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0" 
-                                     x:Name="WifiPasswordLabel" 
-                                     FontSize="14" 
-                                     FontFamily="Monospace" 
-                                     Text="••••••••"
-                                     VerticalOptions="Center"/>
-                                <Button Grid.Column="1" 
-                                      x:Name="PasswordVisibilityButton"
-                                      Text="👁️" 
-                                      FontSize="16"
-                                      Clicked="OnPasswordVisibilityToggled"
+                            <Label Grid.Column="0" Grid.Row="4" Text="Password:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Grid Grid.Column="1" Grid.Row="4" ColumnDefinitions="*,Auto,20" ColumnSpacing="8" VerticalOptions="Center">
+                                <Border Grid.Column="0" 
                                       BackgroundColor="Transparent"
-                                      BorderColor="Gray"
-                                      BorderWidth="1"
-                                      WidthRequest="32"
-                                      HeightRequest="32"
-                                      Padding="0"/>
+                                      Stroke="Transparent"
+                                      StrokeThickness="0"
+                                      Padding="8,4"
+                                      VerticalOptions="Center">
+                                    <Label x:Name="WifiPasswordLabel" 
+                                         FontSize="14" 
+                                         FontFamily="Monospace" 
+                                         Text="••••••••"
+                                         VerticalOptions="Center"
+                                         HorizontalOptions="Start"/>
+                                </Border>
+                                <Border Grid.Column="1"
+                                      BackgroundColor="Transparent"
+                                      Stroke="Gray"
+                                      StrokeThickness="1"
+                                      VerticalOptions="Center"
+                                      Padding="0"
+                                      Margin="0">
+                                    <Button x:Name="PasswordVisibilityButton"
+                                          Text="👀" 
+                                          FontSize="16"
+                                          Clicked="OnPasswordVisibilityToggled"
+                                          BackgroundColor="Transparent"
+                                          BorderColor="Transparent"
+                                          BorderWidth="0"
+                                          WidthRequest="32"
+                                          HeightRequest="28"
+                                          Padding="0"
+                                          VerticalOptions="Center"
+                                          HorizontalOptions="Center"/>
+                                </Border>
+                                <!-- Empty column for scroll bar clearance -->
                             </Grid>
                         </Grid>
                         
                         <!-- Security Warning (only visible when password is shown) -->
                         <Label x:Name="PasswordVisibilityWarning"
-                             Text="⚠️ Password is visible - ensure privacy"
+                             Text="🔒 Password is visible - ensure privacy"
                              FontSize="11"
                              TextColor="Orange"
                              FontAttributes="Italic"
@@ -117,60 +134,12 @@
                              Margin="0,5,0,0"/>
                         
                         <Button x:Name="RefreshWifiButton"
-                              Text="🔄 Refresh Settings"
+                              Text="↻ Refresh Settings"
                               Clicked="OnGetWifiSettingsClicked"
                               FontSize="12"
                               Padding="8,6"
                               HorizontalOptions="Center"
                               Margin="0,5,0,0"/>
-                    </VerticalStackLayout>
-                </Frame>
-                
-                <!-- Simulator Control Panel -->
-                <Frame BackgroundColor="{AppThemeBinding Light=#FFF8DC, Dark=#2A2A1A}"
-                       BorderColor="{AppThemeBinding Light=#FFD700, Dark=#FFD700}"
-                       Padding="15">
-                    <VerticalStackLayout Spacing="15">
-                        <Label Text="🔧 UAS-WAND Simulator" 
-                             FontSize="20" 
-                             FontAttributes="Bold"/>
-                        
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="15" RowSpacing="10">
-                            <!-- Status Display -->
-                            <StackLayout Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="10">
-                                <Label Text="Status:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
-                                <Ellipse WidthRequest="12" HeightRequest="12" x:Name="SimulatorStatusIndicator" VerticalOptions="Center">
-                                    <Ellipse.Fill>
-                                        <SolidColorBrush Color="Gray"/>
-                                    </Ellipse.Fill>
-                                </Ellipse>
-                                <Label x:Name="SimulatorStatusLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
-                            </StackLayout>
-                            
-                            <!-- Control Buttons -->
-                            <Button x:Name="StartSimulatorButton"
-                                  Text="Start Simulator" 
-                                  Clicked="OnStartSimulatorClicked"
-                                  BackgroundColor="Green"
-                                  TextColor="White"
-                                  Grid.Column="0" Grid.Row="1"/>
-                            
-                            <Button x:Name="StopSimulatorButton"
-                                  Text="Stop Simulator" 
-                                  Clicked="OnStopSimulatorClicked"
-                                  BackgroundColor="Red"
-                                  TextColor="White"
-                                  Grid.Column="1" Grid.Row="1"/>
-                            
-                            <!-- Info Display -->
-                            <StackLayout Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="2" Spacing="5">
-                                <Label x:Name="SimulatorInfoLabel" 
-                                     FontFamily="Monospace" 
-                                     FontSize="12" 
-                                     TextColor="Gray" 
-                                     Text="Simulator info will appear here..."/>
-                            </StackLayout>
-                        </Grid>
                     </VerticalStackLayout>
                 </Frame>
                 
@@ -318,10 +287,12 @@
                         <!-- WiFi Configuration Controls -->
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
                             <Entry x:Name="SsidEntry" 
+                                 Text="{Binding Ssid}"
                                  Placeholder="SSID" 
                                  Grid.Column="0" Grid.Row="0"/>
                             
                             <Entry x:Name="PasswordEntry" 
+                                 Text="{Binding Password}"
                                  Placeholder="Password" 
                                  IsPassword="True"
                                  Grid.Column="1" Grid.Row="0"/>

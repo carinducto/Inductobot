@@ -91,6 +91,8 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
     
     public bool HasWifiConfiguration => CurrentWifiConfiguration != null;
     
+    public UASDeviceInfo? CurrentDevice => _deviceService.CurrentDevice;
+    
     public IReadOnlyList<UASDeviceInfo> DiscoveredDevices => _discoveryService.DiscoveredDevices;
     
     public UasWandControlViewModel(
@@ -125,6 +127,22 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             if (connected)
             {
                 StatusMessage = $"Connected to UAS-WAND at {ipAddress}:{port}";
+                
+                // Automatically retrieve WiFi settings after successful connection
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000); // Brief delay to let connection stabilize
+                    try
+                    {
+                        await GetWifiSettingsAsync();
+                        _logger.LogDebug("Auto-retrieved WiFi settings after connection");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to auto-retrieve WiFi settings after connection");
+                    }
+                });
+                
                 return true;
             }
             else
@@ -205,10 +223,20 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             
             if (response.IsSuccess && response.Data != null)
             {
+                _logger.LogDebug("Raw WiFi response data: SSID={Ssid}, Password={Password}, Enabled={Enabled}, Channel={Channel}, IP={IP}", 
+                    response.Data.Ssid, response.Data.Password, response.Data.Enabled, response.Data.Channel, response.Data.IpAddress);
+                    
                 CurrentWifiConfiguration = response.Data;
                 Ssid = response.Data.Ssid ?? "";
+                Password = response.Data.Password ?? "";
                 StatusMessage = "WiFi settings retrieved";
+                
+                // Explicitly fire property change notifications to ensure UI updates
+                OnPropertyChanged(nameof(CurrentWifiConfiguration));
                 OnPropertyChanged(nameof(HasWifiConfiguration));
+                
+                _logger.LogDebug("ViewModel updated - SSID={Ssid}, Password={Password}, Enabled={Enabled}", 
+                    Ssid, Password, response.Data.Enabled);
                 return true;
             }
             else
@@ -243,6 +271,31 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             else
             {
                 StatusMessage = $"WiFi settings failed: {response.Message}";
+                return false;
+            }
+        });
+    }
+    
+    public async Task<bool> RestartWifiAsync()
+    {
+        if (IsBusy || !IsConnected) return false;
+        
+        return await ExecuteAsync(async () =>
+        {
+            StatusMessage = "Restarting UAS-WAND WiFi...";
+            var response = await _apiService.RestartWifiAsync();
+            
+            if (response.IsSuccess)
+            {
+                StatusMessage = "WiFi restarted - refreshing settings...";
+                // Automatically refresh WiFi settings after restart to show updated configuration
+                await Task.Delay(500); // Brief delay to let WiFi settle
+                await GetWifiSettingsAsync();
+                return true;
+            }
+            else
+            {
+                StatusMessage = $"WiFi restart failed: {response.Message}";
                 return false;
             }
         });

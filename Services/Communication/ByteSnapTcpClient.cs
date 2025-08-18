@@ -559,14 +559,7 @@ public class ScanStatus
     public int TotalPoints { get; set; }
 }
 
-public class WifiConfiguration
-{
-    public string? Ssid { get; set; }
-    public string? Password { get; set; }
-    public bool Enabled { get; set; }
-    public int Channel { get; set; }
-    public string? IpAddress { get; set; }
-}
+// WifiConfiguration moved to Inductobot.Models.Device namespace
 
 public class WifiSettings
 {
