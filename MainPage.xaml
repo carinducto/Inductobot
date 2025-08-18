@@ -110,20 +110,28 @@
                              FontAttributes="Bold"/>
                         
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="20" RowSpacing="10">
-                            <Button Text="Get Device Info" 
+                            <Button Text="Device Info" 
                                   Clicked="OnGetDeviceInfoClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="0" Grid.Row="0"/>
                             
                             <Button Text="Keep Alive" 
                                   Clicked="OnKeepAliveClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="1" Grid.Row="0"/>
                             
-                            <Button Text="Get WiFi Settings" 
+                            <Button Text="WiFi Settings" 
                                   Clicked="OnGetWifiSettingsClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="0" Grid.Row="1"/>
                             
                             <Button Text="Sleep Device" 
                                   Clicked="OnSleepDeviceClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="1" Grid.Row="1"/>
                         </Grid>
                         
@@ -140,25 +148,61 @@
                        BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
                        Padding="15">
                     <VerticalStackLayout Spacing="15">
-                        <Label Text="Measurements &amp; Scanning" 
-                             FontSize="20" 
-                             FontAttributes="Bold"/>
+                        <!-- Scanning Status Header -->
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                            <Label Text="Measurements &amp; Scanning" 
+                                 FontSize="20" 
+                                 FontAttributes="Bold"
+                                 VerticalOptions="Center"
+                                 Grid.Column="0"/>
+                            
+                            <!-- Scanning Status Traffic Light -->
+                            <StackLayout Orientation="Horizontal" 
+                                       Spacing="5" 
+                                       VerticalOptions="Center"
+                                       Grid.Column="1">
+                                <Label Text="Scan Status:" 
+                                     FontSize="12" 
+                                     FontAttributes="Bold" 
+                                     VerticalOptions="Center"/>
+                                <Ellipse x:Name="ScanningStatusIndicator"
+                                       WidthRequest="14"
+                                       HeightRequest="14"
+                                       VerticalOptions="Center">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush Color="Gray"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <Label x:Name="ScanningStatusLabel" 
+                                     Text="Idle" 
+                                     FontSize="12" 
+                                     VerticalOptions="Center"/>
+                            </StackLayout>
+                        </Grid>
                         
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="10">
                             <Button Text="Start Scan" 
                                   Clicked="OnStartScanClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="0" Grid.Row="0"/>
                             
                             <Button Text="Stop Scan" 
                                   Clicked="OnStopScanClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="1" Grid.Row="0"/>
                             
-                            <Button Text="Get Measurement" 
+                            <Button Text="Measurement" 
                                   Clicked="OnGetMeasurementClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="0" Grid.Row="1"/>
                             
-                            <Button Text="Get Live Reading" 
+                            <Button Text="Live Reading" 
                                   Clicked="OnGetLiveReadingClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="1" Grid.Row="1"/>
                         </Grid>
                         
@@ -207,12 +251,16 @@
                                  IsPassword="True"
                                  Grid.Column="1" Grid.Row="0"/>
                             
-                            <Button Text="Set WiFi Settings" 
+                            <Button Text="Set WiFi" 
                                   Clicked="OnSetWifiSettingsClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="0" Grid.Row="1"/>
                             
                             <Button Text="Restart WiFi" 
                                   Clicked="OnRestartWifiClicked"
+                                  FontSize="14"
+                                  Padding="10,8"
                                   Grid.Column="1" Grid.Row="1"/>
                         </Grid>
                     </VerticalStackLayout>

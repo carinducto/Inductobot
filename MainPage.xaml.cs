@@ -24,6 +24,7 @@ public partial class MainPage : ContentPage
         
         UpdateConnectionUI();
         UpdateSimulatorUI();
+        UpdateScanningStatusUI(ScanningState.Idle);
     }
 
     protected override void OnDisappearing()
@@ -112,6 +113,82 @@ public partial class MainPage : ContentPage
             }
         }
     }
+    
+    private void UpdateScanningStatusUI(ScanningState state, string additionalInfo = "")
+    {
+        try
+        {
+            if (ScanningStatusIndicator?.Fill is SolidColorBrush brush && ScanningStatusLabel != null)
+            {
+                switch (state)
+                {
+                    case ScanningState.Idle:
+                        brush.Color = Colors.Gray;
+                        ScanningStatusLabel.Text = "Idle";
+                        ScanningStatusLabel.TextColor = Colors.Gray;
+                        break;
+                        
+                    case ScanningState.Starting:
+                        brush.Color = Colors.Orange;
+                        ScanningStatusLabel.Text = "Starting...";
+                        ScanningStatusLabel.TextColor = Colors.Orange;
+                        break;
+                        
+                    case ScanningState.Scanning:
+                        brush.Color = Colors.Green;
+                        ScanningStatusLabel.Text = "Scanning";
+                        ScanningStatusLabel.TextColor = Colors.Green;
+                        break;
+                        
+                    case ScanningState.Stopping:
+                        brush.Color = Colors.Orange;
+                        ScanningStatusLabel.Text = "Stopping...";
+                        ScanningStatusLabel.TextColor = Colors.Orange;
+                        break;
+                        
+                    case ScanningState.Completed:
+                        brush.Color = Colors.Blue;
+                        ScanningStatusLabel.Text = string.IsNullOrEmpty(additionalInfo) ? "Completed" : $"Done ({additionalInfo})";
+                        ScanningStatusLabel.TextColor = Colors.Blue;
+                        
+                        // Auto-reset to idle after 3 seconds
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(3000);
+                            MainThread.BeginInvokeOnMainThread(() => UpdateScanningStatusUI(ScanningState.Idle));
+                        });
+                        break;
+                        
+                    case ScanningState.Error:
+                        brush.Color = Colors.Red;
+                        ScanningStatusLabel.Text = string.IsNullOrEmpty(additionalInfo) ? "Error" : $"Error: {additionalInfo}";
+                        ScanningStatusLabel.TextColor = Colors.Red;
+                        
+                        // Auto-reset to idle after 5 seconds
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(5000);
+                            MainThread.BeginInvokeOnMainThread(() => UpdateScanningStatusUI(ScanningState.Idle));
+                        });
+                        break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating scanning status UI");
+        }
+    }
+    
+    private enum ScanningState
+    {
+        Idle,
+        Starting,
+        Scanning,
+        Stopping,
+        Completed,
+        Error
+    }
 
     private async void OnDisconnectClicked(object sender, EventArgs e)
     {
@@ -132,8 +209,8 @@ public partial class MainPage : ContentPage
         
         var config = new ButtonOperationConfig
         {
-            OriginalText = "Get Device Info",
-            LoadingText = "Getting Info...",
+            OriginalText = "Device Info",
+            LoadingText = "Getting...",
             SuccessText = "✅ Got Info",
             InfoMessage = "Retrieving device information...",
             SuccessMessage = "Device info retrieved successfully"
@@ -264,242 +341,105 @@ public partial class MainPage : ContentPage
     private async void OnStartScanClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Start Scan";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Start Scan",
+            LoadingText = "Starting...",
+            SuccessText = "✅ Started",
+            InfoMessage = "Starting measurement scan...",
+            SuccessMessage = "Measurement scan started successfully"
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
+        // Update scanning status traffic light
+        UpdateScanningStatusUI(ScanningState.Starting);
         
-        try
+        var success = await ExecuteButtonOperationAsync(button, async () =>
         {
-            // Immediate visual feedback
-            SetButtonLoading(button, "Starting...");
-            ShowStatusToast("Starting measurement scan...", ToastType.Info);
+            var result = await _viewModel.StartScanAsync();
             
-            var success = await _viewModel.StartScanAsync();
-            if (success)
+            // Update traffic light based on result
+            if (result)
             {
-                SetButtonSuccess(button, "✅ Started");
-                ShowStatusToast("Measurement scan started successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(2000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
+                UpdateScanningStatusUI(ScanningState.Scanning);
             }
             else
             {
-                SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"Scan start failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
+                UpdateScanningStatusUI(ScanningState.Error, _viewModel.StatusMessage);
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error starting scan");
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Scan error: {ex.Message}", ToastType.Error);
             
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
+            return result;
+        }, config);
+        
+        // If operation failed at framework level (validation, etc.)
+        if (!success && ScanningStatusIndicator?.Fill is SolidColorBrush brush && brush.Color != Colors.Red)
+        {
+            UpdateScanningStatusUI(ScanningState.Idle);
         }
-        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnStopScanClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Stop Scan";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Stop Scan",
+            LoadingText = "Stopping...",
+            SuccessText = "✅ Stopped",
+            InfoMessage = "Stopping measurement scan...",
+            SuccessMessage = "Measurement scan stopped successfully",
+            SuccessResetDelay = 1500
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
+        // Update scanning status traffic light
+        UpdateScanningStatusUI(ScanningState.Stopping);
         
-        try
+        var success = await ExecuteButtonOperationAsync(button, async () =>
         {
-            // Immediate visual feedback
-            SetButtonLoading(button, "Stopping...");
-            ShowStatusToast("Stopping measurement scan...", ToastType.Info);
+            var result = await _viewModel.StopScanAsync();
             
-            var success = await _viewModel.StopScanAsync();
-            if (success)
+            // Update traffic light based on result
+            if (result)
             {
-                SetButtonSuccess(button, "✅ Stopped");
-                ShowStatusToast("Measurement scan stopped successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(1500);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
+                UpdateScanningStatusUI(ScanningState.Completed);
             }
             else
             {
-                SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"Stop scan failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
+                UpdateScanningStatusUI(ScanningState.Error, _viewModel.StatusMessage);
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error stopping scan");
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Stop scan error: {ex.Message}", ToastType.Error);
             
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
+            return result;
+        }, config);
+        
+        // If operation failed at framework level (validation, etc.)
+        if (!success && ScanningStatusIndicator?.Fill is SolidColorBrush brush && brush.Color != Colors.Red)
+        {
+            UpdateScanningStatusUI(ScanningState.Idle);
         }
-        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnGetMeasurementClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Get Measurement";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Measurement",
+            LoadingText = "Reading...",
+            SuccessText = "✅ Got Data",
+            InfoMessage = "Getting measurement data...",
+            SuccessMessage = "Measurement data retrieved successfully"
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
-        
-        try
-        {
-            // Clear previous content and show immediate visual feedback
-            MeasurementText.Text = "Loading measurement data...";
-            MeasurementText.TextColor = ThemeColors.SecondaryText;
-            
-            SetButtonLoading(button, "Reading...");
-            ShowStatusToast("Getting measurement data...", ToastType.Info);
-            
-            var success = await _viewModel.GetMeasurementAsync();
-            if (success)
-            {
-                // Update display with retrieved data
-                MeasurementText.Text = _viewModel.MeasurementText;
-                MeasurementText.TextColor = ThemeColors.SuccessText;
-                
-                SetButtonSuccess(button, "✅ Got Data");
-                ShowStatusToast("Measurement data retrieved successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(2000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-            else
-            {
-                // Show error in the display area
-                MeasurementText.Text = $"❌ Failed to retrieve measurement data:\n{_viewModel.StatusMessage}";
-                MeasurementText.TextColor = ThemeColors.ErrorText;
-                
-                SetButtonError(button, "❌ No Data");
-                ShowStatusToast($"Measurement failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting measurement");
-            
-            // Show error in display area
-            MeasurementText.Text = $"💥 Unexpected error:\n{ex.Message}";
-            MeasurementText.TextColor = ThemeColors.ErrorText;
-            
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Measurement error: {ex.Message}", ToastType.Error);
-            
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
-        }
-        // Removed finally block to eliminate timing race conditions
+        await ExecuteButtonOperationWithContentAsync(
+            button,
+            MeasurementText,
+            () => _viewModel.GetMeasurementAsync(),
+            config,
+            () => _viewModel.MeasurementText,
+            "Loading measurement data..."
+        );
     }
 
     private async void OnGetLiveReadingClicked(object sender, EventArgs e)
@@ -508,9 +448,9 @@ public partial class MainPage : ContentPage
         
         var config = new ButtonOperationConfig
         {
-            OriginalText = "Get Live Reading",
+            OriginalText = "Live Reading",
             LoadingText = "Reading...",
-            SuccessText = "✅ Got Reading",
+            SuccessText = "✅ Got Data",
             InfoMessage = "Getting live reading data...",
             SuccessMessage = "Live reading data retrieved successfully",
             PreValidation = CreateInputValidation(
@@ -543,8 +483,8 @@ public partial class MainPage : ContentPage
         
         var config = new ButtonOperationConfig
         {
-            OriginalText = "Set WiFi Settings",
-            LoadingText = "Setting WiFi...",
+            OriginalText = "Set WiFi",
+            LoadingText = "Setting...",
             SuccessText = "✅ WiFi Set",
             InfoMessage = "Configuring WiFi settings...",
             SuccessMessage = "WiFi settings configured successfully",

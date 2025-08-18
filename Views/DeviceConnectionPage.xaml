@@ -71,7 +71,7 @@
                             <Label Grid.Column="1" Grid.Row="2" x:Name="NetworkInterfaceLabel" Text="Loading..." FontSize="14" VerticalOptions="Center"/>
                         </Grid>
                         
-                        <Button Text="Refresh Network Info" 
+                        <Button Text="Refresh Network" 
                               x:Name="RefreshNetworkButton"
                               Clicked="OnRefreshNetworkClicked"
                               BackgroundColor="#4A90E2"
