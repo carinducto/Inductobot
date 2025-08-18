@@ -129,167 +129,41 @@ public partial class MainPage : ContentPage
     private async void OnGetDeviceInfoClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Get Device Info";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Get Device Info",
+            LoadingText = "Getting Info...",
+            SuccessText = "✅ Got Info",
+            InfoMessage = "Retrieving device information...",
+            SuccessMessage = "Device info retrieved successfully"
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
-        
-        try
-        {
-            // Clear previous content and show immediate visual feedback
-            DeviceInfoText.Text = "Loading device information...";
-            DeviceInfoText.TextColor = ThemeColors.SecondaryText;
-            
-            SetButtonLoading(button, "Getting Info...");
-            ShowStatusToast("Retrieving device information...", ToastType.Info);
-            
-            var success = await _viewModel.GetDeviceInfoAsync();
-            if (success)
-            {
-                // Format the device info nicely
-                DeviceInfoText.Text = _viewModel.DeviceInfoText;
-                DeviceInfoText.TextColor = ThemeColors.SuccessText;
-                
-                SetButtonSuccess(button, "✅ Got Info");
-                ShowStatusToast("Device info retrieved successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(2000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-            else
-            {
-                // Show error in the display area
-                DeviceInfoText.Text = $"❌ Failed to retrieve device information:\n{_viewModel.StatusMessage}";
-                DeviceInfoText.TextColor = ThemeColors.ErrorText;
-                
-                SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"Failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting device info");
-            
-            // Show error in display area
-            DeviceInfoText.Text = $"💥 Unexpected error:\n{ex.Message}";
-            DeviceInfoText.TextColor = ThemeColors.ErrorText;
-            
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Error: {ex.Message}", ToastType.Error);
-            
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
-        }
-        // Removed finally block to eliminate timing race conditions
+        await ExecuteButtonOperationWithContentAsync(
+            button,
+            DeviceInfoText,
+            () => _viewModel.GetDeviceInfoAsync(),
+            config,
+            () => _viewModel.DeviceInfoText,
+            "Loading device information..."
+        );
     }
 
     private async void OnKeepAliveClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Keep Alive";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Keep Alive",
+            LoadingText = "Pinging...",
+            SuccessText = "✅ Alive",
+            InfoMessage = "Sending keep-alive ping...",
+            SuccessMessage = "Device responded to keep-alive",
+            SuccessResetDelay = 1500
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
-        
-        try
-        {
-            // Immediate visual feedback
-            SetButtonLoading(button, "Pinging...");
-            ShowStatusToast("Sending keep-alive ping...", ToastType.Info);
-            
-            var success = await _viewModel.SendKeepAliveAsync();
-            if (success)
-            {
-                SetButtonSuccess(button, "✅ Alive");
-                ShowStatusToast("Device responded to keep-alive", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(1500);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-            else
-            {
-                SetButtonError(button, "❌ No Response");
-                ShowStatusToast($"Keep-alive failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending keep alive");
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Keep-alive error: {ex.Message}", ToastType.Error);
-            
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
-        }
-        // Removed finally block to eliminate timing race conditions
+        await ExecuteButtonOperationAsync(button, () => _viewModel.SendKeepAliveAsync(), config);
     }
 
     private async void OnGetWifiSettingsClicked(object sender, EventArgs e)
@@ -631,198 +505,61 @@ public partial class MainPage : ContentPage
     private async void OnGetLiveReadingClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Get Live Reading";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Get Live Reading",
+            LoadingText = "Reading...",
+            SuccessText = "✅ Got Reading",
+            InfoMessage = "Getting live reading data...",
+            SuccessMessage = "Live reading data retrieved successfully",
+            PreValidation = CreateInputValidation(
+                (StartIndexEntry, "Start Index", text => int.TryParse(text, out int val) && val >= 0, 
+                 "Please enter a valid start index (0 or greater)"),
+                (NumPointsEntry, "Number of Points", text => int.TryParse(text, out int val) && val > 0, 
+                 "Please enter a valid number of points (1 or greater)")
+            )
+        };
         
-        if (_viewModel.IsBusy)
-        {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
-        
-        // Input validation
-        if (string.IsNullOrWhiteSpace(StartIndexEntry.Text) || !int.TryParse(StartIndexEntry.Text, out int startIndex) || startIndex < 0)
-        {
-            ShowStatusToast("Please enter a valid start index (0 or greater)", ToastType.Warning);
-            StartIndexEntry.Focus();
-            return;
-        }
-        
-        if (string.IsNullOrWhiteSpace(NumPointsEntry.Text) || !int.TryParse(NumPointsEntry.Text, out int numPoints) || numPoints <= 0)
-        {
-            ShowStatusToast("Please enter a valid number of points (1 or greater)", ToastType.Warning);
-            NumPointsEntry.Focus();
-            return;
-        }
-        
-        try
-        {
-            // Clear previous content and show immediate visual feedback
-            MeasurementText.Text = "Loading live reading data...";
-            MeasurementText.TextColor = ThemeColors.SecondaryText;
-            
-            SetButtonLoading(button, "Reading...");
-            ShowStatusToast("Getting live reading data...", ToastType.Info);
-            
-            // Update ViewModel properties from UI
-            _viewModel.StartIndex = StartIndexEntry.Text ?? "0";
-            _viewModel.NumPoints = NumPointsEntry.Text ?? "100";
-            
-            var success = await _viewModel.GetLiveReadingAsync();
-            if (success)
+        await ExecuteButtonOperationWithContentAsync(
+            button,
+            MeasurementText,
+            async () =>
             {
-                // Update display with retrieved data
-                MeasurementText.Text = _viewModel.MeasurementText;
-                MeasurementText.TextColor = ThemeColors.SuccessText;
-                
-                SetButtonSuccess(button, "✅ Got Reading");
-                ShowStatusToast("Live reading data retrieved successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(2000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-            else
-            {
-                // Show error in the display area
-                MeasurementText.Text = $"❌ Failed to retrieve live reading:\n{_viewModel.StatusMessage}";
-                MeasurementText.TextColor = ThemeColors.ErrorText;
-                
-                SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"Live reading failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting live reading");
-            
-            // Show error in display area
-            MeasurementText.Text = $"💥 Unexpected error:\n{ex.Message}";
-            MeasurementText.TextColor = ThemeColors.ErrorText;
-            
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"Live reading error: {ex.Message}", ToastType.Error);
-            
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
-        }
-        // Removed finally block to eliminate timing race conditions
+                // Update ViewModel properties from UI
+                _viewModel.StartIndex = StartIndexEntry.Text ?? "0";
+                _viewModel.NumPoints = NumPointsEntry.Text ?? "100";
+                return await _viewModel.GetLiveReadingAsync();
+            },
+            config,
+            () => _viewModel.MeasurementText,
+            "Loading live reading data..."
+        );
     }
 
     private async void OnSetWifiSettingsClicked(object sender, EventArgs e)
     {
         var button = sender as Button;
-        const string originalButtonText = "Set WiFi Settings";
         
-        // Pre-flight validation
-        if (!_viewModel.IsConnected)
+        var config = new ButtonOperationConfig
         {
-            ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
-            return;
-        }
+            OriginalText = "Set WiFi Settings",
+            LoadingText = "Setting WiFi...",
+            SuccessText = "✅ WiFi Set",
+            InfoMessage = "Configuring WiFi settings...",
+            SuccessMessage = "WiFi settings configured successfully",
+            PreValidation = CreateInputValidation(
+                (SsidEntry, "SSID", text => !string.IsNullOrWhiteSpace(text), "Please enter an SSID")
+            )
+        };
         
-        if (_viewModel.IsBusy)
+        await ExecuteButtonOperationAsync(button, async () =>
         {
-            ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
-            return;
-        }
-        
-        // Input validation
-        if (string.IsNullOrWhiteSpace(SsidEntry.Text))
-        {
-            ShowStatusToast("Please enter an SSID", ToastType.Warning);
-            SsidEntry.Focus();
-            return;
-        }
-        
-        try
-        {
-            // Immediate visual feedback
-            SetButtonLoading(button, "Setting WiFi...");
-            ShowStatusToast("Configuring WiFi settings...", ToastType.Info);
-            
             // Update ViewModel properties from UI
             _viewModel.Ssid = SsidEntry.Text ?? "";
             _viewModel.Password = PasswordEntry.Text ?? "";
-            
-            var success = await _viewModel.SetWifiSettingsAsync();
-            if (success)
-            {
-                SetButtonSuccess(button, "✅ WiFi Set");
-                ShowStatusToast("WiFi settings configured successfully", ToastType.Success);
-                
-                // Auto-reset button after success
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(2000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-            else
-            {
-                SetButtonError(button, "❌ Failed");
-                ShowStatusToast($"WiFi setup failed: {_viewModel.StatusMessage}", ToastType.Error);
-                
-                // Auto-reset button after error
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        SetButtonNormal(button, originalButtonText);
-                    });
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error setting WiFi settings");
-            SetButtonError(button, "❌ Error");
-            ShowStatusToast($"WiFi error: {ex.Message}", ToastType.Error);
-            
-            // Auto-reset button after error
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    SetButtonNormal(button, originalButtonText);
-                });
-            });
-        }
-        // Removed finally block to eliminate timing race conditions
+            return await _viewModel.SetWifiSettingsAsync();
+        }, config);
     }
 
     private async void OnRestartWifiClicked(object sender, EventArgs e)
@@ -961,6 +698,181 @@ public partial class MainPage : ContentPage
         public static Color ErrorText => Application.Current?.RequestedTheme == AppTheme.Dark 
             ? Color.FromArgb("#E57373")   // Light red for dark mode  
             : Color.FromArgb("#C62828");  // Dark red for light mode
+    }
+
+    #endregion
+
+    #region Button Operation Framework
+    
+    /// <summary>
+    /// Configuration for button operations
+    /// </summary>
+    public class ButtonOperationConfig
+    {
+        public string OriginalText { get; set; } = "";
+        public string LoadingText { get; set; } = "Loading...";
+        public string SuccessText { get; set; } = "✅ Success";
+        public string ErrorTextFormat { get; set; } = "❌ {0}";
+        public string InfoMessage { get; set; } = "";
+        public string SuccessMessage { get; set; } = "";
+        public string ErrorMessageFormat { get; set; } = "Operation failed: {0}";
+        public int SuccessResetDelay { get; set; } = 2000;
+        public int ErrorResetDelay { get; set; } = 3000;
+        public bool RequireConnection { get; set; } = true;
+        public bool CheckBusyState { get; set; } = true;
+        public Func<Task<bool>>? PreValidation { get; set; }
+    }
+    
+    /// <summary>
+    /// Executes a button operation with comprehensive feedback and error handling
+    /// </summary>
+    private async Task<bool> ExecuteButtonOperationAsync(
+        Button button, 
+        Func<Task<bool>> operation, 
+        ButtonOperationConfig config)
+    {
+        if (button == null || operation == null) return false;
+        
+        try
+        {
+            // Pre-flight validation
+            if (config.RequireConnection && !_viewModel.IsConnected)
+            {
+                ShowStatusToast("Not connected to device. Connect first.", ToastType.Warning);
+                return false;
+            }
+            
+            if (config.CheckBusyState && _viewModel.IsBusy)
+            {
+                ShowStatusToast("Another operation is in progress. Please wait.", ToastType.Warning);
+                return false;
+            }
+            
+            // Custom pre-validation
+            if (config.PreValidation != null)
+            {
+                var validationResult = await config.PreValidation();
+                if (!validationResult) return false;
+            }
+            
+            // Start operation
+            SetButtonLoading(button, config.LoadingText);
+            if (!string.IsNullOrEmpty(config.InfoMessage))
+            {
+                ShowStatusToast(config.InfoMessage, ToastType.Info);
+            }
+            
+            // Execute operation
+            var success = await operation();
+            
+            // Handle result
+            if (success)
+            {
+                SetButtonSuccess(button, config.SuccessText);
+                if (!string.IsNullOrEmpty(config.SuccessMessage))
+                {
+                    ShowStatusToast(config.SuccessMessage, ToastType.Success);
+                }
+                
+                // Auto-reset after success
+                _ = ResetButtonAfterDelay(button, config.OriginalText, config.SuccessResetDelay);
+                return true;
+            }
+            else
+            {
+                var errorText = string.Format(config.ErrorTextFormat, "Failed");
+                var errorMessage = string.Format(config.ErrorMessageFormat, _viewModel.StatusMessage);
+                
+                SetButtonError(button, errorText);
+                ShowStatusToast(errorMessage, ToastType.Error);
+                
+                // Auto-reset after error
+                _ = ResetButtonAfterDelay(button, config.OriginalText, config.ErrorResetDelay);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in button operation: {OriginalText}", config.OriginalText);
+            
+            var errorText = string.Format(config.ErrorTextFormat, "Error");
+            var errorMessage = $"Error: {ex.Message}";
+            
+            SetButtonError(button, errorText);
+            ShowStatusToast(errorMessage, ToastType.Error);
+            
+            // Auto-reset after error
+            _ = ResetButtonAfterDelay(button, config.OriginalText, config.ErrorResetDelay);
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Executes a button operation with content area updates (for Get Device Info, Get Measurement, etc.)
+    /// </summary>
+    private async Task<bool> ExecuteButtonOperationWithContentAsync(
+        Button button,
+        Label contentLabel,
+        Func<Task<bool>> operation,
+        ButtonOperationConfig config,
+        Func<string> getContentOnSuccess,
+        string loadingContent = "Loading...")
+    {
+        if (contentLabel != null)
+        {
+            contentLabel.Text = loadingContent;
+            contentLabel.TextColor = ThemeColors.SecondaryText;
+        }
+        
+        var success = await ExecuteButtonOperationAsync(button, operation, config);
+        
+        if (success && contentLabel != null)
+        {
+            contentLabel.Text = getContentOnSuccess();
+            contentLabel.TextColor = ThemeColors.SuccessText;
+        }
+        else if (!success && contentLabel != null)
+        {
+            contentLabel.Text = $"❌ Failed: {_viewModel.StatusMessage}";
+            contentLabel.TextColor = ThemeColors.ErrorText;
+        }
+        
+        return success;
+    }
+    
+    /// <summary>
+    /// Resets button after a delay on a background thread
+    /// </summary>
+    private Task ResetButtonAfterDelay(Button button, string originalText, int delayMs)
+    {
+        return Task.Run(async () =>
+        {
+            await Task.Delay(delayMs);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                SetButtonNormal(button, originalText);
+            });
+        });
+    }
+    
+    /// <summary>
+    /// Creates input validation function for text entries
+    /// </summary>
+    private Func<Task<bool>> CreateInputValidation(params (Entry entry, string fieldName, Func<string, bool> validator, string errorMessage)[] validations)
+    {
+        return () =>
+        {
+            foreach (var (entry, fieldName, validator, errorMessage) in validations)
+            {
+                if (entry?.Text == null || !validator(entry.Text))
+                {
+                    ShowStatusToast(errorMessage, ToastType.Warning);
+                    entry?.Focus();
+                    return Task.FromResult(false);
+                }
+            }
+            return Task.FromResult(true);
+        };
     }
 
     #endregion
