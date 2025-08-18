@@ -19,6 +19,12 @@
             Icon="dotnet_bot.png"
             ContentTemplate="{DataTemplate local:MainPage}"
             Route="DeviceControl" />
+            
+        <ShellContent
+            Title="Settings"
+            Icon="dotnet_bot.png"
+            ContentTemplate="{DataTemplate views:SettingsPage}"
+            Route="Settings" />
     </TabBar>
 
 </Shell>

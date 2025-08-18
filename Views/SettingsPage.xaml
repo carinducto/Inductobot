@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Inductobot.Views.SettingsPage"
+             Title="Settings">
+    
+    <Grid RowDefinitions="*,Auto" Padding="20">
+        
+        <!-- Content Section -->
+        <ScrollView Grid.Row="0" Margin="0,0,0,10">
+            <VerticalStackLayout Spacing="20">
+                
+                <!-- Connection Settings -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Connection Settings" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <!-- Connection Timeout -->
+                            <Label Grid.Column="0" Grid.Row="0" Text="Connection Timeout (seconds):" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="0" 
+                                   x:Name="ConnectionTimeoutEntry" 
+                                   Text="15" 
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                            
+                            <!-- Retry Attempts -->
+                            <Label Grid.Column="0" Grid.Row="1" Text="Max Retry Attempts:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="1" 
+                                   x:Name="RetryAttemptsEntry" 
+                                   Text="3" 
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                            
+                            <!-- Keep Alive Interval -->
+                            <Label Grid.Column="0" Grid.Row="2" Text="Keep Alive Interval (seconds):" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="2" 
+                                   x:Name="KeepAliveIntervalEntry" 
+                                   Text="30" 
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                            
+                            <!-- Auto Reconnect -->
+                            <Label Grid.Column="0" Grid.Row="3" Text="Auto Reconnect:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Switch Grid.Column="1" Grid.Row="3" 
+                                    x:Name="AutoReconnectSwitch" 
+                                    IsToggled="True"
+                                    HorizontalOptions="End"
+                                    Toggled="OnSwitchToggled"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Discovery Settings -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Discovery Settings" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <!-- Scan Timeout -->
+                            <Label Grid.Column="0" Grid.Row="0" Text="Network Scan Timeout (minutes):" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="0" 
+                                   x:Name="ScanTimeoutEntry" 
+                                   Text="2" 
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                            
+                            <!-- Port Range -->
+                            <Label Grid.Column="0" Grid.Row="1" Text="Default Ports to Scan:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="1" 
+                                   x:Name="DefaultPortsEntry" 
+                                   Text="80,443,8080,8443"
+                                   WidthRequest="150"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                            
+                            <!-- Auto Discovery -->
+                            <Label Grid.Column="0" Grid.Row="2" Text="Auto Discovery on Startup:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Switch Grid.Column="1" Grid.Row="2" 
+                                    x:Name="AutoDiscoverySwitch" 
+                                    IsToggled="False"
+                                    HorizontalOptions="End"
+                                    Toggled="OnSwitchToggled"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- UI Settings -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="User Interface" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <!-- Theme Selection -->
+                            <Label Grid.Column="0" Grid.Row="0" Text="Theme:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Picker Grid.Column="1" Grid.Row="0" 
+                                    x:Name="ThemePicker" 
+                                    WidthRequest="120"
+                                    HorizontalOptions="End"
+                                    SelectedIndexChanged="OnPickerSelectedIndexChanged">
+                                <Picker.ItemsSource>
+                                    <x:Array Type="{x:Type x:String}">
+                                        <x:String>System</x:String>
+                                        <x:String>Light</x:String>
+                                        <x:String>Dark</x:String>
+                                    </x:Array>
+                                </Picker.ItemsSource>
+                            </Picker>
+                            
+                            <!-- Show Timestamps -->
+                            <Label Grid.Column="0" Grid.Row="1" Text="Show Timestamps in Logs:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Switch Grid.Column="1" Grid.Row="1" 
+                                    x:Name="ShowTimestampsSwitch" 
+                                    IsToggled="True"
+                                    HorizontalOptions="End"
+                                    Toggled="OnSwitchToggled"/>
+                            
+                            <!-- Show Debug Info -->
+                            <Label Grid.Column="0" Grid.Row="2" Text="Show Debug Information:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Switch Grid.Column="1" Grid.Row="2" 
+                                    x:Name="ShowDebugInfoSwitch" 
+                                    IsToggled="False"
+                                    HorizontalOptions="End"
+                                    Toggled="OnSwitchToggled"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Logging Settings -->
+                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Logging &amp; Diagnostics" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <!-- Log Level -->
+                            <Label Grid.Column="0" Grid.Row="0" Text="Log Level:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Picker Grid.Column="1" Grid.Row="0" 
+                                    x:Name="LogLevelPicker" 
+                                    WidthRequest="120"
+                                    HorizontalOptions="End"
+                                    SelectedIndexChanged="OnPickerSelectedIndexChanged">
+                                <Picker.ItemsSource>
+                                    <x:Array Type="{x:Type x:String}">
+                                        <x:String>Error</x:String>
+                                        <x:String>Warning</x:String>
+                                        <x:String>Information</x:String>
+                                        <x:String>Debug</x:String>
+                                        <x:String>Trace</x:String>
+                                    </x:Array>
+                                </Picker.ItemsSource>
+                            </Picker>
+                            
+                            <!-- Enable File Logging -->
+                            <Label Grid.Column="0" Grid.Row="1" Text="Enable File Logging:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Switch Grid.Column="1" Grid.Row="1" 
+                                    x:Name="FileLoggingSwitch" 
+                                    IsToggled="True"
+                                    HorizontalOptions="End"
+                                    Toggled="OnSwitchToggled"/>
+                            
+                            <!-- Max Log Files -->
+                            <Label Grid.Column="0" Grid.Row="2" Text="Max Log Files to Keep:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                            <Entry Grid.Column="1" Grid.Row="2" 
+                                   x:Name="MaxLogFilesEntry" 
+                                   Text="10" 
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   HorizontalOptions="End"
+                                   TextChanged="OnEntryTextChanged"/>
+                        </Grid>
+                        
+                        <!-- Action Buttons -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,10,0,0">
+                            <Button Text="View Logs" 
+                                  x:Name="ViewLogsButton"
+                                  Clicked="OnViewLogsClicked"
+                                  Grid.Column="0"/>
+                            
+                            <Button Text="Clear Logs" 
+                                  x:Name="ClearLogsButton"
+                                  Clicked="OnClearLogsClicked"
+                                  BackgroundColor="Orange"
+                                  TextColor="White"
+                                  Grid.Column="1"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Application Info -->
+                <Frame BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+                       BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                       Padding="15">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Application Information" 
+                             FontSize="20" 
+                             FontAttributes="Bold"/>
+                        
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                            <Label Grid.Column="0" Grid.Row="0" Text="Version:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="0" x:Name="VersionLabel" Text="1.0.0" FontSize="14"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="1" Text="Build:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="1" x:Name="BuildLabel" Text="Debug" FontSize="14"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="2" Text="Platform:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="2" x:Name="PlatformLabel" Text="Windows" FontSize="14"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="3" Text="Runtime:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="3" x:Name="RuntimeLabel" Text=".NET 9.0" FontSize="14"/>
+                        </Grid>
+                        
+                        <!-- Action Buttons -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,10,0,0">
+                            <Button Text="Export Settings" 
+                                  x:Name="ExportSettingsButton"
+                                  Clicked="OnExportSettingsClicked"
+                                  Grid.Column="0"/>
+                            
+                            <Button Text="Reset to Defaults" 
+                                  x:Name="ResetSettingsButton"
+                                  Clicked="OnResetSettingsClicked"
+                                  BackgroundColor="Red"
+                                  TextColor="White"
+                                  Grid.Column="1"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+            </VerticalStackLayout>
+        </ScrollView>
+        
+        <!-- Status Bar -->
+        <Frame Grid.Row="1" 
+               BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#1A1A1A}"
+               BorderColor="Transparent"
+               Padding="10,5">
+            <Label x:Name="StatusLabel" 
+                 Text="Ready" 
+                 FontSize="12"
+                 VerticalOptions="Center"
+                 HorizontalOptions="Center"/>
+        </Frame>
+    </Grid>
+</ContentPage>
