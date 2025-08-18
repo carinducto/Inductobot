@@ -97,6 +97,7 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         
         // Subscribe to service events
         _deviceService.ConnectionStateChanged += OnConnectionStateChanged;
+        _deviceService.ConnectionProgressChanged += OnConnectionProgressChanged;
         _discoveryService.DeviceDiscovered += OnDeviceDiscovered;
         _discoveryService.DeviceRemoved += OnDeviceRemoved;
         
@@ -396,6 +397,21 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         }
     }
     
+    private void OnConnectionProgressChanged(object? sender, string progressMessage)
+    {
+        try
+        {
+            Application.Current?.Dispatcher.Dispatch(() =>
+            {
+                StatusMessage = progressMessage;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating UI on connection progress change");
+        }
+    }
+    
     private void OnDeviceDiscovered(object? sender, UASDeviceInfo device)
     {
         try
@@ -462,6 +478,7 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             _deviceService.ConnectionStateChanged -= OnConnectionStateChanged;
+            _deviceService.ConnectionProgressChanged -= OnConnectionProgressChanged;
             _discoveryService.DeviceDiscovered -= OnDeviceDiscovered;
             _discoveryService.DeviceRemoved -= OnDeviceRemoved;
         }

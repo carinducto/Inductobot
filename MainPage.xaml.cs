@@ -32,7 +32,7 @@ public partial class MainPage : ContentPage
         if (_viewModel != null)
         {
             _viewModel.PropertyChanged -= OnPropertyChanged;
-            _viewModel.Dispose();
+            // NOTE: Don't dispose - ViewModel is now Singleton and should persist
         }
         
         if (_simulatorViewModel != null)
@@ -74,6 +74,12 @@ public partial class MainPage : ContentPage
             DisconnectButton.IsVisible = _viewModel.IsConnected;
             StatusLabel.Text = _viewModel.StatusMessage;
             
+            // Update traffic light indicator color based on connection state
+            if (ConnectionStatusIndicator.Fill is SolidColorBrush brush)
+            {
+                brush.Color = _viewModel.IsConnected ? Colors.Green : Colors.Red;
+            }
+            
             if (_viewModel.IsConnected)
             {
                 DeviceInfoLabel.Text = "UAS-WAND Device Connected";
@@ -93,6 +99,12 @@ public partial class MainPage : ContentPage
                 ConnectionStatusLabel.Text = "Status Unknown";
                 DeviceInfoLabel.Text = "Error";
                 DisconnectButton.IsVisible = false;
+                
+                // Set indicator to gray for error state
+                if (ConnectionStatusIndicator.Fill is SolidColorBrush brush)
+                {
+                    brush.Color = Colors.Gray;
+                }
             }
             catch (Exception fallbackEx)
             {
@@ -116,60 +128,169 @@ public partial class MainPage : ContentPage
 
     private async void OnGetDeviceInfoClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        const string originalButtonText = "Get Device Info";
+        
+        // Pre-flight validation
+        if (!_viewModel.IsConnected)
+        {
+            ShowStatusToast("⚠️ Not connected to device. Connect first.", ToastType.Warning);
+            return;
+        }
+        
+        if (_viewModel.IsBusy)
+        {
+            ShowStatusToast("⚠️ Another operation is in progress. Please wait.", ToastType.Warning);
+            return;
+        }
+        
         try
         {
+            // Clear previous content and show immediate visual feedback
+            DeviceInfoText.Text = "Loading device information...";
+            DeviceInfoText.TextColor = ThemeColors.SecondaryText;
+            
+            SetButtonLoading(button, "Getting Info...");
+            ShowStatusToast("📡 Retrieving device information...", ToastType.Info);
+            
             var success = await _viewModel.GetDeviceInfoAsync();
             if (success)
             {
+                // Format the device info nicely
                 DeviceInfoText.Text = _viewModel.DeviceInfoText;
+                DeviceInfoText.TextColor = ThemeColors.SuccessText;
+                
+                SetButtonSuccess(button, "✅ Got Info");
+                ShowStatusToast("✅ Device info retrieved successfully", ToastType.Success);
+                
+                // Auto-reset button after success
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(2000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
             else
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                // Show error in the display area
+                DeviceInfoText.Text = $"❌ Failed to retrieve device information:\n{_viewModel.StatusMessage}";
+                DeviceInfoText.TextColor = ThemeColors.ErrorText;
+                
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"❌ Failed: {_viewModel.StatusMessage}", ToastType.Error);
+                
+                // Auto-reset button after error
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SetButtonNormal(button, originalButtonText);
+                    });
+                });
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting device info");
-            await DisplayAlert("Error", ex.Message, "OK");
+            
+            // Show error in display area
+            DeviceInfoText.Text = $"💥 Unexpected error:\n{ex.Message}";
+            DeviceInfoText.TextColor = ThemeColors.ErrorText;
+            
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"💥 Error: {ex.Message}", ToastType.Error);
+            
+            // Auto-reset button after error
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SetButtonNormal(button, originalButtonText);
+                });
+            });
         }
+        // Removed finally block to eliminate timing race conditions
     }
 
     private async void OnKeepAliveClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         try
         {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Pinging...");
+            ShowStatusToast("Sending keep-alive ping...", ToastType.Info);
+            
             var success = await _viewModel.SendKeepAliveAsync();
-            if (!success)
+            if (success)
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonSuccess(button, "✅ Alive");
+                ShowStatusToast("Device responded to keep-alive", ToastType.Success);
+            }
+            else
+            {
+                SetButtonError(button, "❌ No Response");
+                ShowStatusToast($"Keep-alive failed: {_viewModel.StatusMessage}", ToastType.Error);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending keep alive");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"Keep-alive error: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            if (!button?.IsEnabled == true)
+            {
+                SetButtonNormal(button, "Keep Alive");
+            }
         }
     }
 
     private async void OnGetWifiSettingsClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         try
         {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Getting WiFi...");
+            ShowStatusToast("Retrieving WiFi settings...", ToastType.Info);
+            
             var success = await _viewModel.GetWifiSettingsAsync();
             if (success)
             {
                 SsidEntry.Text = _viewModel.Ssid;
+                SetButtonSuccess(button, "✅ Got WiFi");
+                ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
             }
             else
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Failed to get WiFi: {_viewModel.StatusMessage}", ToastType.Error);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting WiFi settings");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"WiFi error: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            if (!button?.IsEnabled == true)
+            {
+                SetButtonNormal(button, "Get WiFi Settings");
+            }
         }
     }
 
@@ -192,18 +313,39 @@ public partial class MainPage : ContentPage
 
     private async void OnStartScanClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         try
         {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Starting...");
+            ShowStatusToast("Starting measurement scan...", ToastType.Info);
+            
             var success = await _viewModel.StartScanAsync();
-            if (!success)
+            if (success)
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonSuccess(button, "✅ Started");
+                ShowStatusToast("Measurement scan started successfully", ToastType.Success);
+            }
+            else
+            {
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"Scan start failed: {_viewModel.StatusMessage}", ToastType.Error);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting scan");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"Scan error: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            if (!button?.IsEnabled == true)
+            {
+                SetButtonNormal(button, "Start Scan");
+            }
         }
     }
 
@@ -226,22 +368,40 @@ public partial class MainPage : ContentPage
 
     private async void OnGetMeasurementClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         try
         {
+            // Immediate visual feedback
+            SetButtonLoading(button, "Reading...");
+            ShowStatusToast("Getting measurement data...", ToastType.Info);
+            
             var success = await _viewModel.GetMeasurementAsync();
             if (success)
             {
                 MeasurementText.Text = _viewModel.MeasurementText;
+                SetButtonSuccess(button, "✅ Got Data");
+                ShowStatusToast("Measurement data retrieved successfully", ToastType.Success);
             }
             else
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonError(button, "❌ No Data");
+                ShowStatusToast($"Measurement failed: {_viewModel.StatusMessage}", ToastType.Error);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting measurement");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"Measurement error: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            if (!button?.IsEnabled == true)
+            {
+                SetButtonNormal(button, "Get Measurement");
+            }
         }
     }
 
@@ -272,22 +432,50 @@ public partial class MainPage : ContentPage
 
     private async void OnSetWifiSettingsClicked(object sender, EventArgs e)
     {
+        var button = sender as Button;
+        
         try
         {
+            // Validate input first
+            if (string.IsNullOrWhiteSpace(SsidEntry.Text))
+            {
+                ShowStatusToast("Please enter an SSID", ToastType.Warning);
+                return;
+            }
+            
+            // Immediate visual feedback
+            SetButtonLoading(button, "Setting WiFi...");
+            ShowStatusToast("Configuring WiFi settings...", ToastType.Info);
+            
             // Update ViewModel properties from UI
             _viewModel.Ssid = SsidEntry.Text ?? "";
             _viewModel.Password = PasswordEntry.Text ?? "";
             
             var success = await _viewModel.SetWifiSettingsAsync();
-            if (!success)
+            if (success)
             {
-                await DisplayAlert("Error", _viewModel.StatusMessage, "OK");
+                SetButtonSuccess(button, "✅ WiFi Set");
+                ShowStatusToast("WiFi settings configured successfully", ToastType.Success);
+            }
+            else
+            {
+                SetButtonError(button, "❌ Failed");
+                ShowStatusToast($"WiFi setup failed: {_viewModel.StatusMessage}", ToastType.Error);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error setting WiFi settings");
-            await DisplayAlert("Error", ex.Message, "OK");
+            SetButtonError(button, "❌ Error");
+            ShowStatusToast($"WiFi error: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            if (!button?.IsEnabled == true)
+            {
+                SetButtonNormal(button, "Set WiFi Settings");
+            }
         }
     }
 
@@ -385,6 +573,241 @@ public partial class MainPage : ContentPage
             _logger.LogError(ex, "Error stopping simulator");
             await DisplayAlert("Error", $"Failed to stop simulator: {ex.Message}", "OK");
         }
+    }
+
+    #endregion
+
+    #region Theme-Aware Color System
+    
+    /// <summary>
+    /// Gets theme-appropriate colors that work in both Light and Dark modes
+    /// </summary>
+    private static class ThemeColors
+    {
+        // Status Colors - Theme aware
+        public static Color Success => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#4CAF50")   // Softer green for dark mode
+            : Color.FromArgb("#388E3C");  // Standard green for light mode
+            
+        public static Color Error => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#F44336")   // Softer red for dark mode  
+            : Color.FromArgb("#D32F2F");  // Standard red for light mode
+            
+        public static Color Warning => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#FF9800")   // Softer orange for dark mode
+            : Color.FromArgb("#F57C00");  // Standard orange for light mode
+            
+        public static Color Info => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#2196F3")   // Softer blue for dark mode
+            : Color.FromArgb("#1976D2");  // Standard blue for light mode
+            
+        // Text Colors - High contrast for readability
+        public static Color OnColorText => Colors.White; // Always white text on colored backgrounds
+        
+        public static Color SecondaryText => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#B0B0B0")   // Light gray for dark mode
+            : Color.FromArgb("#666666");  // Dark gray for light mode
+            
+        public static Color SuccessText => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#81C784")   // Light green for dark mode
+            : Color.FromArgb("#2E7D32");  // Dark green for light mode
+            
+        public static Color ErrorText => Application.Current?.RequestedTheme == AppTheme.Dark 
+            ? Color.FromArgb("#E57373")   // Light red for dark mode  
+            : Color.FromArgb("#C62828");  // Dark red for light mode
+    }
+
+    #endregion
+
+    #region Button State Management
+
+    /// <summary>
+    /// Sets a button to loading state with spinner and custom text
+    /// </summary>
+    private void SetButtonLoading(Button button, string loadingText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.IsEnabled = false;
+            button.Text = loadingText ?? "Loading...";
+            button.BackgroundColor = ThemeColors.Warning;
+            button.TextColor = ThemeColors.OnColorText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button loading state");
+        }
+    }
+    
+    /// <summary>
+    /// Sets a button to success state with green color and checkmark
+    /// Note: Does not auto-reset - caller must handle reset timing
+    /// </summary>
+    private void SetButtonSuccess(Button button, string successText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.Text = successText ?? "✅ Success";
+            button.BackgroundColor = ThemeColors.Success;
+            button.TextColor = ThemeColors.OnColorText;
+            button.IsEnabled = false; // Keep disabled until reset
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button success state");
+        }
+    }
+    
+    /// <summary>
+    /// Sets a button to error state with red color and X mark
+    /// Note: Does not auto-reset - caller must handle reset timing
+    /// </summary>
+    private void SetButtonError(Button button, string errorText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.Text = errorText ?? "❌ Error";
+            button.BackgroundColor = ThemeColors.Error;
+            button.TextColor = ThemeColors.OnColorText;
+            button.IsEnabled = false; // Keep disabled until reset
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button error state");
+        }
+    }
+    
+    /// <summary>
+    /// Resets a button to normal state
+    /// </summary>
+    private void SetButtonNormal(Button button, string originalText = null)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            button.IsEnabled = true;
+            
+            // Clear background and text colors to restore default theme appearance
+            button.ClearValue(Button.BackgroundColorProperty);
+            button.ClearValue(Button.TextColorProperty);
+            
+            // Alternative approach - explicitly set to default/transparent
+            // button.BackgroundColor = Colors.Transparent;
+            // button.TextColor = Colors.Transparent;
+            
+            // Restore original text based on button name or use provided text
+            if (!string.IsNullOrEmpty(originalText))
+            {
+                button.Text = originalText;
+            }
+            else
+            {
+                // Auto-detect original text based on button reference
+                RestoreButtonOriginalText(button);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error setting button normal state");
+        }
+    }
+    
+    /// <summary>
+    /// Restores original button text - should only be called when originalText is not provided
+    /// This is a fallback method that should rarely be used
+    /// </summary>
+    private void RestoreButtonOriginalText(Button button)
+    {
+        if (button == null) return;
+        
+        try
+        {
+            // Since we can't reliably detect the original text, log a warning
+            // All button handlers should pass explicit originalText to SetButtonNormal()
+            _logger.LogWarning("RestoreButtonOriginalText called without explicit text - this should not happen");
+            button.Text = "Button";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error in RestoreButtonOriginalText fallback");
+            button.Text = "Button";
+        }
+    }
+    
+    /// <summary>
+    /// Shows a toast-style message in the status bar with color coding
+    /// </summary>
+    private async void ShowStatusToast(string message, ToastType type = ToastType.Info, int durationMs = 3000)
+    {
+        if (StatusLabel == null) return;
+        
+        try
+        {
+            var originalText = StatusLabel.Text;
+            var originalColor = StatusLabel.TextColor;
+            
+            // Set status with color coding
+            StatusLabel.Text = GetToastIcon(type) + " " + message;
+            StatusLabel.TextColor = GetToastColor(type);
+            
+            // Reset after duration
+            await Task.Delay(durationMs);
+            
+            StatusLabel.Text = originalText;
+            StatusLabel.TextColor = originalColor;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error showing status toast");
+        }
+    }
+    
+    /// <summary>
+    /// Toast notification types
+    /// </summary>
+    private enum ToastType
+    {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
+    
+    /// <summary>
+    /// Gets icon for toast type
+    /// </summary>
+    private string GetToastIcon(ToastType type)
+    {
+        return type switch
+        {
+            ToastType.Success => "✅",
+            ToastType.Error => "❌",
+            ToastType.Warning => "⚠️",
+            ToastType.Info => "ℹ️",
+            _ => "ℹ️"
+        };
+    }
+    
+    /// <summary>
+    /// Gets theme-aware color for toast type
+    /// </summary>
+    private Color GetToastColor(ToastType type)
+    {
+        return type switch
+        {
+            ToastType.Success => ThemeColors.Success,
+            ToastType.Error => ThemeColors.Error,
+            ToastType.Warning => ThemeColors.Warning,
+            ToastType.Info => ThemeColors.Info,
+            _ => ThemeColors.SecondaryText
+        };
     }
 
     #endregion

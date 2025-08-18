@@ -3,6 +3,26 @@
     "Windows Machine": {
       "commandName": "Project",
       "nativeDebugging": false
+    },
+    "Debug Console": {
+      "commandName": "Project",
+      "commandLineArgs": "--debug --debug-level Information",
+      "nativeDebugging": false
+    },
+    "Verbose Mode": {
+      "commandName": "Project", 
+      "commandLineArgs": "--verbose",
+      "nativeDebugging": false
+    },
+    "Trace Mode": {
+      "commandName": "Project",
+      "commandLineArgs": "--trace",
+      "nativeDebugging": false
+    },
+    "Full Debug": {
+      "commandName": "Project",
+      "commandLineArgs": "--debug --debug-level Debug --log-file --log-file-level Trace",
+      "nativeDebugging": false
     }
   }
 }

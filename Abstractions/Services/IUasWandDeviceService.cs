@@ -28,6 +28,11 @@ public interface IUasWandDeviceService
     event EventHandler<ConnectionState>? ConnectionStateChanged;
     
     /// <summary>
+    /// Connection progress changed event (provides user-friendly status messages)
+    /// </summary>
+    event EventHandler<string>? ConnectionProgressChanged;
+    
+    /// <summary>
     /// Connect to a UAS-WAND device
     /// </summary>
     Task<bool> ConnectToDeviceAsync(string ipAddress, int port, CancellationToken cancellationToken = default);

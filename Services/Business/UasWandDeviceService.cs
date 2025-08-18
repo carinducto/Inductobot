@@ -26,6 +26,7 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
     public UASDeviceInfo? CurrentDevice => _transport.CurrentDevice;
     
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
+    public event EventHandler<string>? ConnectionProgressChanged;
     
     public UasWandDeviceService(
         IUasWandTransport transport,

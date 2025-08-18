@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Inductobot.Abstractions.Services;
+using Inductobot.Models.Debug;
 using System.Net;
 using System.Net.Sockets;
 
@@ -13,45 +14,61 @@ namespace Inductobot.Services.Simulation;
 public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorService
 {
     private readonly ILogger<UasWandSimulatorService> _logger;
-    private SimulatedUasWandDevice? _simulatedDevice;
-    private readonly bool _enableSimulator = true; // Hardcoded for development
-    private readonly int _simulatorPort = 8080;    // Hardcoded for development
+    private readonly DebugConfiguration _config;
+    private UasWandHttpsSimulator? _httpSimulator;
     private DateTime? _startTime;
 
     // IUasWandSimulatorService implementation
-    public bool IsRunning => _simulatedDevice?.IsRunning ?? false;
-    public int Port => _simulatorPort;
+    public bool IsRunning => _httpSimulator?.IsRunning ?? false;
+    public int Port => _config.SimulatorPort;
     public string? IPAddress => GetLocalIPAddress();
     public event EventHandler<bool>? SimulatorStateChanged;
 
-    public UasWandSimulatorService(ILogger<UasWandSimulatorService> logger)
+    public UasWandSimulatorService(ILogger<UasWandSimulatorService> logger, DebugConfiguration config)
     {
         _logger = logger;
+        _config = config;
+        
+        // Log constructor execution to verify DI is working
+        try 
+        {
+            _logger.LogInformation("🏗️ UasWandSimulatorService constructor called - Config.EnableSimulator: {Enabled}", config?.EnableSimulator ?? false);
+        }
+        catch (Exception ex)
+        {
+            // Fallback logging if there are any issues
+            Console.WriteLine($"❌ UasWandSimulatorService constructor error: {ex.Message}");
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_enableSimulator)
+        _logger.LogDebug("🚀 UasWandSimulatorService ExecuteAsync starting...");
+        _logger.LogDebug("📋 Simulator configuration - Enabled: {Enabled}, Port: {Port}", _config.EnableSimulator, _config.SimulatorPort);
+        
+        if (!_config.EnableSimulator)
         {
-            _logger.LogInformation("UAS-WAND simulator is disabled via configuration");
+            _logger.LogInformation("⏹️ UAS-WAND simulator is disabled via configuration");
             return;
         }
 
         try
         {
+            _logger.LogDebug("🔧 Creating simulator logger factory...");
             var loggerFactory = LoggerFactory.Create(builder => 
             {
                 builder.AddConsole();
                 builder.SetMinimumLevel(LogLevel.Debug);
             });
-            var simulatorLogger = loggerFactory.CreateLogger<SimulatedUasWandDevice>();
+            var simulatorLogger = loggerFactory.CreateLogger<UasWandHttpsSimulator>();
                 
-            _simulatedDevice = new SimulatedUasWandDevice(simulatorLogger, _simulatorPort);
+            _logger.LogDebug("🏗️ Creating UasWandHttpsSimulator instance on port {Port}...", _config.SimulatorPort);
+            _httpSimulator = new UasWandHttpsSimulator(simulatorLogger, _config.SimulatorPort);
             
-            _logger.LogInformation("Starting UAS-WAND simulator on localhost:{Port} (local connections only)", _simulatorPort);
-            await _simulatedDevice.StartAsync(stoppingToken);
+            _logger.LogInformation("🚀 Starting HTTP UAS-WAND simulator on localhost:{Port} (local connections only)", _config.SimulatorPort);
+            await _httpSimulator.StartAsync(stoppingToken);
             _startTime = DateTime.Now;
-            _logger.LogInformation("UAS-WAND simulator started successfully on localhost (secure mode). IsRunning: {IsRunning}", IsRunning);
+            _logger.LogInformation("✅ UAS-WAND simulator started successfully on localhost (secure mode). IsRunning: {IsRunning}", IsRunning);
             SimulatorStateChanged?.Invoke(this, true);
             
             // Keep the service running until cancellation
@@ -59,12 +76,13 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("UAS-WAND simulator service is stopping");
+            _logger.LogInformation("⏹️ UAS-WAND simulator service is stopping");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error running UAS-WAND simulator service");
-            throw;
+            _logger.LogError(ex, "❌ CRITICAL ERROR running UAS-WAND simulator service - Simulator will not be available");
+            // Don't rethrow here - we don't want to crash the entire app if simulator fails
+            // throw;
         }
     }
 
@@ -72,10 +90,10 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
     {
         _logger.LogInformation("Stopping UAS-WAND simulator service");
         
-        if (_simulatedDevice != null)
+        if (_httpSimulator != null)
         {
-            await _simulatedDevice.StopAsync();
-            _simulatedDevice.Dispose();
+            await _httpSimulator.StopAsync();
+            _httpSimulator.Dispose();
             SimulatorStateChanged?.Invoke(this, false);
         }
         
@@ -84,7 +102,7 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
 
     public override void Dispose()
     {
-        _simulatedDevice?.Dispose();
+        _httpSimulator?.Dispose();
         base.Dispose();
     }
 
@@ -98,21 +116,21 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
 
         try
         {
-            if (_simulatedDevice == null)
+            if (_httpSimulator == null)
             {
                 var loggerFactory = LoggerFactory.Create(builder => 
                 {
                     builder.AddConsole();
                     builder.SetMinimumLevel(LogLevel.Debug);
                 });
-                var simulatorLogger = loggerFactory.CreateLogger<SimulatedUasWandDevice>();
-                _simulatedDevice = new SimulatedUasWandDevice(simulatorLogger, _simulatorPort);
+                var simulatorLogger = loggerFactory.CreateLogger<UasWandHttpsSimulator>();
+                _httpSimulator = new UasWandHttpsSimulator(simulatorLogger, _config.SimulatorPort);
             }
 
-            await _simulatedDevice.StartAsync();
+            await _httpSimulator.StartAsync();
             _startTime = DateTime.Now;
             SimulatorStateChanged?.Invoke(this, true);
-            _logger.LogInformation("UAS-WAND simulator started manually");
+            _logger.LogInformation("HTTP UAS-WAND simulator started manually");
             return true;
         }
         catch (Exception ex)
@@ -132,11 +150,11 @@ public class UasWandSimulatorService : BackgroundService, IUasWandSimulatorServi
 
         try
         {
-            if (_simulatedDevice != null)
+            if (_httpSimulator != null)
             {
-                await _simulatedDevice.StopAsync();
+                await _httpSimulator.StopAsync();
                 SimulatorStateChanged?.Invoke(this, false);
-                _logger.LogInformation("UAS-WAND simulator stopped manually");
+                _logger.LogInformation("HTTP UAS-WAND simulator stopped manually");
             }
             return true;
         }

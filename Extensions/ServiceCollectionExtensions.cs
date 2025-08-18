@@ -19,20 +19,19 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddUasWandServices(this IServiceCollection services)
     {
-        // Communication Layer (lowest level)
-        services.AddSingleton<IUasWandTransport, UasWandTcpTransport>();
+        // HTTP API Service Layer (matches real UAS-WAND protocol)
+        services.AddSingleton<UasWandHttpApiService>();
+        services.AddSingleton<IUasWandApiService>(provider => provider.GetRequiredService<UasWandHttpApiService>());
         
-        // API Service Layer (middle level - depends on transport)
-        services.AddSingleton<IUasWandApiService, UasWandApiService>();
-        
-        // Business Logic Layer (high level - depends on transport and API services)
-        services.AddSingleton<IUasWandDeviceService, UasWandDeviceService>();
+        // Business Logic Layer (HTTP-based with detailed progress reporting)
+        services.AddSingleton<IUasWandDeviceService, UasWandHttpDeviceService>();
         
         // Discovery Service (parallel to device service)
         services.AddSingleton<IUasWandDiscoveryService, UasWandDiscoveryService>();
         
         // UI Layer (depends only on high-level services)
-        services.AddTransient<UasWandControlViewModel>();
+        // NOTE: Singleton ensures connection state persists across page navigation
+        services.AddSingleton<UasWandControlViewModel>();
         
         return services;
     }
@@ -48,7 +47,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUasWandDeviceService, MockUasWandDeviceService>();
         services.AddSingleton<IUasWandDiscoveryService, MockUasWandDiscoveryService>();
         
-        services.AddTransient<UasWandControlViewModel>();
+        services.AddSingleton<UasWandControlViewModel>();
         
         return services;
     }
@@ -109,6 +108,7 @@ public class MockUasWandDeviceService : IUasWandDeviceService
     public bool IsConnected => true;
     public Models.Device.UASDeviceInfo? CurrentDevice => null;
     public event EventHandler<Models.Device.ConnectionState>? ConnectionStateChanged;
+    public event EventHandler<string>? ConnectionProgressChanged;
     
     public Task<bool> ConnectToDeviceAsync(string ipAddress, int port, CancellationToken cancellationToken = default) => Task.FromResult(true);
     public Task<bool> ConnectToDeviceAsync(Models.Device.UASDeviceInfo device, CancellationToken cancellationToken = default) => Task.FromResult(true);
