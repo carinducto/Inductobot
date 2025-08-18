@@ -46,6 +46,86 @@
         <ScrollView Grid.Row="1" Margin="0,10">
             <VerticalStackLayout Spacing="20">
                 
+                <!-- Current WiFi Settings Display (always visible) -->
+                <Frame x:Name="WifiSettingsDisplay"
+                       BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+                       BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                       Padding="15"
+                       IsVisible="True">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="📶 UAS-WAND WiFi Settings" 
+                             FontSize="18" 
+                             FontAttributes="Bold"
+                             HorizontalOptions="Center"/>
+                        
+                        <Label x:Name="WifiSettingsStatus"
+                             Text="WiFi settings not retrieved - click 'WiFi Settings' button to load"
+                             FontSize="12"
+                             FontAttributes="Italic"
+                             TextColor="Gray"
+                             HorizontalOptions="Center"
+                             Margin="0,0,0,10"/>
+                        
+                        <Grid x:Name="WifiSettingsContent"
+                              ColumnDefinitions="Auto,*" 
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto" 
+                              ColumnSpacing="10" 
+                              RowSpacing="5"
+                              IsVisible="False">
+                            <Label Grid.Column="0" Grid.Row="0" Text="SSID:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="0" x:Name="CurrentSsidLabel" FontSize="14" FontFamily="Monospace"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="1" Text="Enabled:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="1" x:Name="WifiEnabledLabel" FontSize="14" FontFamily="Monospace"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="2" Text="Channel:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="2" x:Name="WifiChannelLabel" FontSize="14" FontFamily="Monospace"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="3" Text="IP Address:" FontSize="14" FontAttributes="Bold"/>
+                            <Label Grid.Column="1" Grid.Row="3" x:Name="WifiIpAddressLabel" FontSize="14" FontFamily="Monospace"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="4" Text="Password:" FontSize="14" FontAttributes="Bold"/>
+                            <Grid Grid.Column="1" Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <Label Grid.Column="0" 
+                                     x:Name="WifiPasswordLabel" 
+                                     FontSize="14" 
+                                     FontFamily="Monospace" 
+                                     Text="••••••••"
+                                     VerticalOptions="Center"/>
+                                <Button Grid.Column="1" 
+                                      x:Name="PasswordVisibilityButton"
+                                      Text="👁️" 
+                                      FontSize="16"
+                                      Clicked="OnPasswordVisibilityToggled"
+                                      BackgroundColor="Transparent"
+                                      BorderColor="Gray"
+                                      BorderWidth="1"
+                                      WidthRequest="32"
+                                      HeightRequest="32"
+                                      Padding="0"/>
+                            </Grid>
+                        </Grid>
+                        
+                        <!-- Security Warning (only visible when password is shown) -->
+                        <Label x:Name="PasswordVisibilityWarning"
+                             Text="⚠️ Password is visible - ensure privacy"
+                             FontSize="11"
+                             TextColor="Orange"
+                             FontAttributes="Italic"
+                             HorizontalOptions="Center"
+                             IsVisible="False"
+                             Margin="0,5,0,0"/>
+                        
+                        <Button x:Name="RefreshWifiButton"
+                              Text="🔄 Refresh Settings"
+                              Clicked="OnGetWifiSettingsClicked"
+                              FontSize="12"
+                              Padding="8,6"
+                              HorizontalOptions="Center"
+                              Margin="0,5,0,0"/>
+                    </VerticalStackLayout>
+                </Frame>
+                
                 <!-- Simulator Control Panel -->
                 <Frame BackgroundColor="{AppThemeBinding Light=#FFF8DC, Dark=#2A2A1A}"
                        BorderColor="{AppThemeBinding Light=#FFD700, Dark=#FFD700}"
@@ -235,6 +315,7 @@
                              FontSize="20" 
                              FontAttributes="Bold"/>
                         
+                        <!-- WiFi Configuration Controls -->
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
                             <Entry x:Name="SsidEntry" 
                                  Placeholder="SSID" 

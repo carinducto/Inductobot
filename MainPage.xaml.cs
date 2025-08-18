@@ -9,6 +9,8 @@ public partial class MainPage : ContentPage
     private readonly UasWandControlViewModel _viewModel;
     private readonly SimulatorControlViewModel _simulatorViewModel;
     private readonly ILogger<MainPage> _logger;
+    private bool _isPasswordVisible = false;
+    private CancellationTokenSource? _passwordVisibilityTimeoutCts;
 
     public MainPage(UasWandControlViewModel viewModel, SimulatorControlViewModel simulatorViewModel, ILogger<MainPage> logger)
     {
@@ -25,6 +27,7 @@ public partial class MainPage : ContentPage
         UpdateConnectionUI();
         UpdateSimulatorUI();
         UpdateScanningStatusUI(ScanningState.Idle);
+        UpdateWifiSettingsDisplay();
     }
 
     protected override void OnDisappearing()
@@ -40,6 +43,10 @@ public partial class MainPage : ContentPage
         {
             _simulatorViewModel.PropertyChanged -= OnSimulatorPropertyChanged;
         }
+        
+        // Clean up password visibility timeout and hide password for security
+        CancelPasswordVisibilityTimeout();
+        _isPasswordVisible = false;
     }
 
     private void OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -57,6 +64,20 @@ public partial class MainPage : ContentPage
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error updating connection UI");
+                    }
+                });
+            }
+            else if (e.PropertyName == nameof(_viewModel.HasWifiConfiguration) || e.PropertyName == nameof(_viewModel.CurrentWifiConfiguration))
+            {
+                MainThread.BeginInvokeOnMainThread(() => 
+                {
+                    try
+                    {
+                        UpdateWifiSettingsDisplay();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating WiFi settings display");
                     }
                 });
             }
@@ -111,6 +132,169 @@ public partial class MainPage : ContentPage
             {
                 _logger.LogError(fallbackEx, "Critical error: Unable to update UI elements");
             }
+        }
+    }
+    
+    private void UpdateWifiSettingsDisplay()
+    {
+        try
+        {
+            if (_viewModel.HasWifiConfiguration && _viewModel.CurrentWifiConfiguration != null)
+            {
+                // Show the settings content and hide the status message
+                WifiSettingsStatus.IsVisible = false;
+                WifiSettingsContent.IsVisible = true;
+                
+                var config = _viewModel.CurrentWifiConfiguration;
+                
+                CurrentSsidLabel.Text = config.Ssid ?? "N/A";
+                WifiEnabledLabel.Text = config.Enabled ? "Yes" : "No";
+                WifiChannelLabel.Text = config.Channel.ToString();
+                WifiIpAddressLabel.Text = config.IpAddress ?? "N/A";
+                
+                // Update password display based on visibility state
+                UpdatePasswordDisplay();
+                
+                // Auto-populate the entry fields for easy editing (but don't overwrite if user is typing)
+                if (string.IsNullOrEmpty(SsidEntry.Text) && !string.IsNullOrEmpty(config.Ssid))
+                {
+                    SsidEntry.Text = config.Ssid;
+                }
+            }
+            else
+            {
+                // Show the status message and hide the content
+                WifiSettingsStatus.IsVisible = true;
+                WifiSettingsContent.IsVisible = false;
+                // Reset password visibility when hiding content
+                _isPasswordVisible = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating WiFi settings display");
+            WifiSettingsStatus.IsVisible = true;
+            WifiSettingsContent.IsVisible = false;
+        }
+    }
+    
+    private void UpdatePasswordDisplay()
+    {
+        try
+        {
+            if (_viewModel.CurrentWifiConfiguration != null)
+            {
+                var password = _viewModel.CurrentWifiConfiguration.Password;
+                
+                if (string.IsNullOrEmpty(password))
+                {
+                    WifiPasswordLabel.Text = "Not set";
+                    PasswordVisibilityButton.IsVisible = false;
+                    PasswordVisibilityWarning.IsVisible = false;
+                }
+                else
+                {
+                    PasswordVisibilityButton.IsVisible = true;
+                    
+                    if (_isPasswordVisible)
+                    {
+                        WifiPasswordLabel.Text = password;
+                        PasswordVisibilityButton.Text = "🙈"; // Hide icon
+                        PasswordVisibilityWarning.IsVisible = true;
+                    }
+                    else
+                    {
+                        WifiPasswordLabel.Text = "••••••••";
+                        PasswordVisibilityButton.Text = "👁️"; // Show icon  
+                        PasswordVisibilityWarning.IsVisible = false;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating password display");
+            WifiPasswordLabel.Text = "Error";
+            PasswordVisibilityButton.IsVisible = false;
+        }
+    }
+    
+    private void OnPasswordVisibilityToggled(object sender, EventArgs e)
+    {
+        try
+        {
+            _isPasswordVisible = !_isPasswordVisible;
+            UpdatePasswordDisplay();
+            
+            // Log password visibility toggle for security auditing
+            _logger.LogInformation("WiFi password visibility toggled to: {IsVisible}", 
+                _isPasswordVisible ? "visible" : "hidden");
+            
+            // Auto-hide password after 30 seconds for security
+            if (_isPasswordVisible)
+            {
+                StartPasswordVisibilityTimeout();
+            }
+            else
+            {
+                CancelPasswordVisibilityTimeout();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error toggling password visibility");
+        }
+    }
+    
+    private void StartPasswordVisibilityTimeout()
+    {
+        try
+        {
+            // Cancel any existing timeout
+            CancelPasswordVisibilityTimeout();
+            
+            _passwordVisibilityTimeoutCts = new CancellationTokenSource();
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(30000, _passwordVisibilityTimeoutCts.Token); // 30 seconds
+                    
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        _isPasswordVisible = false;
+                        UpdatePasswordDisplay();
+                        _logger.LogInformation("WiFi password auto-hidden after timeout");
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    // Timeout was cancelled, ignore
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in password visibility timeout");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting password visibility timeout");
+        }
+    }
+    
+    private void CancelPasswordVisibilityTimeout()
+    {
+        try
+        {
+            _passwordVisibilityTimeoutCts?.Cancel();
+            _passwordVisibilityTimeoutCts?.Dispose();
+            _passwordVisibilityTimeoutCts = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling password visibility timeout");
         }
     }
     

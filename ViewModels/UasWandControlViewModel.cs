@@ -27,6 +27,7 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
     private string _numPoints = "100";
     private bool _isConnected = false;
     private bool _isBusy = false;
+    private WifiConfiguration? _currentWifiConfiguration;
     
     public string StatusMessage
     {
@@ -81,6 +82,14 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         get => _isBusy;
         private set => SetProperty(ref _isBusy, value);
     }
+    
+    public WifiConfiguration? CurrentWifiConfiguration
+    {
+        get => _currentWifiConfiguration;
+        private set => SetProperty(ref _currentWifiConfiguration, value);
+    }
+    
+    public bool HasWifiConfiguration => CurrentWifiConfiguration != null;
     
     public IReadOnlyList<UASDeviceInfo> DiscoveredDevices => _discoveryService.DiscoveredDevices;
     
@@ -196,8 +205,10 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             
             if (response.IsSuccess && response.Data != null)
             {
+                CurrentWifiConfiguration = response.Data;
                 Ssid = response.Data.Ssid ?? "";
                 StatusMessage = "WiFi settings retrieved";
+                OnPropertyChanged(nameof(HasWifiConfiguration));
                 return true;
             }
             else
@@ -453,6 +464,9 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         else if (!IsConnected)
         {
             StatusMessage = "Not connected to UAS-WAND device";
+            // Clear WiFi configuration when disconnected
+            CurrentWifiConfiguration = null;
+            OnPropertyChanged(nameof(HasWifiConfiguration));
         }
     }
     
