@@ -308,14 +308,66 @@ public class UasWandHttpsSimulator : IDisposable
 
     private string HandleSetWifiSettings(HttpListenerRequest request)
     {
-        // Read request body for WiFi settings
-        _logger.LogDebug("WiFi settings update requested");
-        return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi settings updated" });
+        try
+        {
+            _logger.LogDebug("HTTP HandleSetWifiSettings - Reading request body for WiFi settings update");
+            
+            // Read request body
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            var requestBody = reader.ReadToEnd();
+            
+            _logger.LogDebug("HTTP HandleSetWifiSettings - Request body: {RequestBody}", requestBody);
+            
+            // Parse WiFi settings from request
+            var wifiSettings = JsonSerializer.Deserialize<WifiSettings>(requestBody, _jsonOptions);
+            
+            if (wifiSettings == null)
+            {
+                _logger.LogWarning("HTTP HandleSetWifiSettings - Failed to deserialize WiFi settings from request body");
+                return CreateApiResponse(new CodedResponse { Code = 1, Message = "Invalid WiFi settings format" });
+            }
+            
+            _logger.LogDebug("HTTP HandleSetWifiSettings - Parsed WiFi settings: SSID={Ssid}, Password={Password}, Enable={Enable}",
+                wifiSettings.Ssid, wifiSettings.Password, wifiSettings.Enable);
+            
+            // Update the simulator's WiFi configuration
+            if (!string.IsNullOrEmpty(wifiSettings.Ssid))
+            {
+                _wifiConfig.Ssid = wifiSettings.Ssid;
+            }
+            
+            if (!string.IsNullOrEmpty(wifiSettings.Password))
+            {
+                _wifiConfig.Password = wifiSettings.Password;
+            }
+            
+            _wifiConfig.Enabled = wifiSettings.Enable;
+            
+            _logger.LogInformation("HTTP HandleSetWifiSettings - WiFi configuration updated: SSID={Ssid}, Password={Password}, Enabled={Enabled}",
+                _wifiConfig.Ssid, _wifiConfig.Password, _wifiConfig.Enabled);
+            
+            return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi settings updated successfully" });
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "HTTP HandleSetWifiSettings - JSON deserialization error");
+            return CreateApiResponse(new CodedResponse { Code = 1, Message = "Invalid JSON format" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HTTP HandleSetWifiSettings - Unexpected error updating WiFi settings");
+            return CreateApiResponse(new CodedResponse { Code = 1, Message = "Failed to update WiFi settings" });
+        }
     }
 
     private string HandleRestartWifi()
     {
-        return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi restarted" });
+        _logger.LogInformation("HTTP HandleRestartWifi - WiFi restart requested. Current config: SSID={Ssid}, Enabled={Enabled}",
+            _wifiConfig.Ssid, _wifiConfig.Enabled);
+        
+        // In a real device, this would restart the WiFi interface and apply any pending settings
+        // For simulation, we just log and confirm the restart
+        return CreateApiResponse(new CodedResponse { Code = 0, Message = "WiFi restarted successfully" });
     }
 
     private string HandleStartScan(HttpListenerRequest request)

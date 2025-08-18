@@ -1115,4 +1115,21 @@ public partial class MainPage : ContentPage
 
     #endregion
 
+    #region WiFi Button Handlers
+
+    private async void OnRefreshWifiSettingsClicked(object sender, EventArgs e)
+    {
+        await ExecuteButtonOperationAsync(sender as Button, async () => await _viewModel.RefreshWifiSettingsAsync(), new ButtonOperationConfig
+        {
+            RequireConnection = true,
+            LoadingText = "↻ Refreshing...",
+            SuccessText = "✅ Refreshed",
+            OriginalText = "↻ Refresh WiFi Settings",
+            SuccessMessage = "WiFi settings refreshed from device successfully",
+            InfoMessage = "Refreshing current WiFi configuration from UAS-WAND device..."
+        });
+    }
+
+    #endregion
+
 }

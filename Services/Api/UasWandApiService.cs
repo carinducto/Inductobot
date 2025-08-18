@@ -110,8 +110,16 @@ public class UasWandApiService : IUasWandApiService
             var response = SafeDeserialize<ApiResponse<T>>(responseJson);
             if (response != null)
             {
-                _logger.LogDebug("UAS-WAND command completed: {Method} {Endpoint} -> {Success}", 
-                    method.Method, endpoint, response.IsSuccess);
+                _logger.LogDebug("UAS-WAND command completed: {Method} {Endpoint} -> {Success}, Data is null: {DataIsNull}", 
+                    method.Method, endpoint, response.IsSuccess, response.Data == null);
+                    
+                // Special logging for WiFi endpoint to debug the specific issue
+                if (endpoint.ToLowerInvariant() == "/wifi" && method == HttpMethod.Get)
+                {
+                    _logger.LogDebug("WiFi API Response Details - IsSuccess: {IsSuccess}, Data: {@Data}, Message: {Message}", 
+                        response.IsSuccess, response.Data, response.Message);
+                }
+                
                 return response;
             }
             
@@ -156,12 +164,25 @@ public class UasWandApiService : IUasWandApiService
     {
         try
         {
-            return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<T>(json, _jsonOptions);
+            
+            // Enhanced logging for WiFi-related deserialization
+            if (typeof(T).Name.Contains("WifiConfiguration"))
+            {
+                _logger.LogDebug("WiFi deserialization result: {ResultType}, Is null: {IsNull}", 
+                    typeof(T).Name, result == null);
+                if (result != null)
+                {
+                    _logger.LogDebug("Deserialized WiFi object: {@Object}", result);
+                }
+            }
+            
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "JSON deserialization error. JSON: {Json}", 
-                json?.Length > 100 ? json[..100] + "..." : json);
+            _logger.LogError(ex, "JSON deserialization error for type {Type}. JSON: {Json}", 
+                typeof(T).Name, json?.Length > 100 ? json[..100] + "..." : json);
             return default;
         }
     }

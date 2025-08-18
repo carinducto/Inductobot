@@ -134,8 +134,8 @@
                              Margin="0,5,0,0"/>
                         
                         <Button x:Name="RefreshWifiButton"
-                              Text="↻ Refresh Settings"
-                              Clicked="OnGetWifiSettingsClicked"
+                              Text="↻ Refresh WiFi Settings"
+                              Clicked="OnRefreshWifiSettingsClicked"
                               FontSize="12"
                               Padding="8,6"
                               HorizontalOptions="Center"

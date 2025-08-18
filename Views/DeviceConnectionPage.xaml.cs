@@ -585,13 +585,7 @@ public partial class DeviceConnectionPage : ContentPage
             if (targetDevice != null)
             {
                 targetDevice.ConnectionState = ConnectionState.Connecting;
-                // Force UI refresh
-                var index = _devices.IndexOf(targetDevice);
-                if (index >= 0)
-                {
-                    _devices.RemoveAt(index);
-                    _devices.Insert(index, targetDevice);
-                }
+                // UI will automatically update via INotifyPropertyChanged
             }
             
             var connectTask = _deviceService.ConnectToDeviceAsync(ipAddress, port, _connectionCts.Token);
@@ -613,12 +607,7 @@ public partial class DeviceConnectionPage : ContentPage
                 if (targetDevice != null)
                 {
                     targetDevice.ConnectionState = ConnectionState.Timeout;
-                    var index = _devices.IndexOf(targetDevice);
-                    if (index >= 0)
-                    {
-                        _devices.RemoveAt(index);
-                        _devices.Insert(index, targetDevice);
-                    }
+                    // UI will automatically update via INotifyPropertyChanged
                 }
                 return;
             }
@@ -633,23 +622,53 @@ public partial class DeviceConnectionPage : ContentPage
                 StatusLabel.Text = "Connected";
                 // Traffic light indicator shows green status - no pop-up interruption needed
                 
-                // Automatically retrieve WiFi settings after successful connection
+                // Automatically retrieve WiFi settings after successful authentication
                 try
                 {
-                    ShowStatusToast("Retrieving WiFi settings...", ToastType.Info);
-                    _logger.LogInformation("Automatically retrieving WiFi settings after connection");
-                    
-                    var wifiResponse = await _apiService.GetWifiSettingsAsync();
-                    if (wifiResponse.IsSuccess && wifiResponse.Data != null)
+                    // Verify device is still connected and authenticated before retrieving WiFi settings
+                    if (_deviceService?.CurrentDevice == null || !_deviceService.IsConnected)
                     {
-                        _logger.LogInformation("WiFi settings retrieved successfully: SSID={SSID}, Enabled={Enabled}", 
-                            wifiResponse.Data.Ssid, wifiResponse.Data.Enabled);
-                        ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
+                        _logger.LogWarning("Device disconnected or not authenticated - skipping WiFi auto-retrieval");
+                        ShowStatusToast("Device disconnected - WiFi retrieval skipped", ToastType.Warning);
                     }
                     else
                     {
-                        _logger.LogWarning("Failed to retrieve WiFi settings: {Error}", wifiResponse.Message);
-                        ShowStatusToast("WiFi settings retrieval failed", ToastType.Warning);
+                        // First verify authentication by attempting a device info call
+                        _logger.LogInformation("Verifying authentication before WiFi auto-retrieval");
+                        var authTest = await _apiService.GetDeviceInfoAsync();
+                        
+                        if (!authTest.IsSuccess)
+                        {
+                            if (authTest.ErrorCode == "UNAUTHORIZED")
+                            {
+                                _logger.LogWarning("Authentication failed - cannot auto-retrieve WiFi settings: {Error}", authTest.Message);
+                                ShowStatusToast("Authentication required for WiFi settings", ToastType.Warning);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Device communication failed - skipping WiFi auto-retrieval: {Error}", authTest.Message);
+                                ShowStatusToast("Device communication failed", ToastType.Warning);
+                            }
+                        }
+                        else
+                        {
+                            // Authentication verified - proceed with WiFi retrieval
+                            ShowStatusToast("Retrieving WiFi settings...", ToastType.Info);
+                            _logger.LogInformation("Authentication verified - automatically retrieving WiFi settings");
+                            
+                            var wifiResponse = await _apiService.GetWifiSettingsAsync();
+                            if (wifiResponse.IsSuccess && wifiResponse.Data != null)
+                            {
+                                _logger.LogInformation("WiFi settings retrieved successfully: SSID={SSID}, Enabled={Enabled}", 
+                                    wifiResponse.Data.Ssid, wifiResponse.Data.Enabled);
+                                ShowStatusToast("WiFi settings retrieved successfully", ToastType.Success);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Failed to retrieve WiFi settings: {Error}", wifiResponse.Message);
+                                ShowStatusToast("WiFi settings retrieval failed", ToastType.Warning);
+                            }
+                        }
                     }
                 }
                 catch (Exception wifiEx)
@@ -683,12 +702,7 @@ public partial class DeviceConnectionPage : ContentPage
             if (targetDevice != null)
             {
                 targetDevice.ConnectionState = ConnectionState.Error;
-                var index = _devices.IndexOf(targetDevice);
-                if (index >= 0)
-                {
-                    _devices.RemoveAt(index);
-                    _devices.Insert(index, targetDevice);
-                }
+                // UI will automatically update via INotifyPropertyChanged
             }
         }
         finally
@@ -936,15 +950,7 @@ public partial class DeviceConnectionPage : ContentPage
                         connectedDevice.LastConnected = DateTime.Now;
                     }
                     
-                    // Force UI refresh by triggering collection change notification
-                    var index = _devices.IndexOf(connectedDevice);
-                    if (index >= 0)
-                    {
-                        _devices.RemoveAt(index);
-                        _devices.Insert(index, connectedDevice);
-                    }
-                    
-                    // Refresh the UI to show updated status
+                    // UI will automatically update via INotifyPropertyChanged
                     UpdateDeviceCount();
                 }
             }
@@ -962,13 +968,7 @@ public partial class DeviceConnectionPage : ContentPage
                     }
                 }
                 
-                // Force refresh of all items
-                var allDevices = _devices.ToList();
-                _devices.Clear();
-                foreach (var device in allDevices)
-                {
-                    _devices.Add(device);
-                }
+                // Devices will automatically update via INotifyPropertyChanged
             }
         }
         catch (Exception ex)

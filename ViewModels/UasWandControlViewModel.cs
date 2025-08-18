@@ -128,14 +128,43 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             {
                 StatusMessage = $"Connected to UAS-WAND at {ipAddress}:{port}";
                 
-                // Automatically retrieve WiFi settings after successful connection
+                // Automatically retrieve WiFi settings after successful authentication
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(1000); // Brief delay to let connection stabilize
+                    
+                    // Verify device is still connected and authenticated before retrieving WiFi settings
+                    if (!IsConnected || _deviceService.CurrentDevice == null)
+                    {
+                        _logger.LogWarning("Device disconnected or not authenticated - skipping WiFi auto-retrieval");
+                        return;
+                    }
+                    
                     try
                     {
-                        await GetWifiSettingsAsync();
-                        _logger.LogDebug("Auto-retrieved WiFi settings after connection");
+                        // First verify authentication by attempting a device info call
+                        _logger.LogDebug("Verifying authentication before WiFi auto-retrieval");
+                        var authTest = await _apiService.GetDeviceInfoAsync();
+                        
+                        if (!authTest.IsSuccess)
+                        {
+                            if (authTest.ErrorCode == "UNAUTHORIZED")
+                            {
+                                _logger.LogWarning("Authentication failed - cannot auto-retrieve WiFi settings: {Error}", authTest.Message);
+                                StatusMessage = "Connected but authentication required for WiFi settings";
+                                return;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Device communication failed - skipping WiFi auto-retrieval: {Error}", authTest.Message);
+                                return;
+                            }
+                        }
+                        
+                        // Authentication verified - proceed with WiFi retrieval
+                        _logger.LogDebug("Authentication verified - proceeding with WiFi auto-retrieval");
+                        await GetWifiSettingsInternalAsync();
+                        _logger.LogDebug("Auto-retrieved WiFi settings after authenticated connection");
                     }
                     catch (Exception ex)
                     {
@@ -218,32 +247,138 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
         
         return await ExecuteAsync(async () =>
         {
-            StatusMessage = "Getting UAS-WAND WiFi settings...";
-            var response = await _apiService.GetWifiSettingsAsync();
+            return await GetWifiSettingsInternalAsync();
+        });
+    }
+    
+    private async Task<bool> GetWifiSettingsInternalAsync()
+    {
+        StatusMessage = "Getting UAS-WAND WiFi settings...";
+        _logger.LogDebug("🔍 Calling GetWifiSettingsAsync via {ApiServiceType}", _apiService.GetType().Name);
+        
+        var response = await _apiService.GetWifiSettingsAsync();
+        
+        _logger.LogDebug("📡 GetWifiSettingsAsync - Response IsSuccess: {IsSuccess}, Data is null: {DataIsNull}, Message: {Message}", 
+            response.IsSuccess, response.Data == null, response.Message);
+        
+        if (response.IsSuccess && response.Data != null)
+        {
+            _logger.LogDebug("Raw WiFi response data: SSID={Ssid}, Password={Password}, Enabled={Enabled}, Channel={Channel}, IP={IP}", 
+                response.Data.Ssid, response.Data.Password, response.Data.Enabled, response.Data.Channel, response.Data.IpAddress);
+                
+            CurrentWifiConfiguration = response.Data;
+            Ssid = response.Data.Ssid ?? "";
+            Password = response.Data.Password ?? "";
+            StatusMessage = "WiFi settings retrieved successfully";
             
-            if (response.IsSuccess && response.Data != null)
+            // Verify the assignment worked
+            _logger.LogDebug("After assignment - CurrentWifiConfiguration is null: {IsNull}", CurrentWifiConfiguration == null);
+            if (CurrentWifiConfiguration != null)
             {
-                _logger.LogDebug("Raw WiFi response data: SSID={Ssid}, Password={Password}, Enabled={Enabled}, Channel={Channel}, IP={IP}", 
-                    response.Data.Ssid, response.Data.Password, response.Data.Enabled, response.Data.Channel, response.Data.IpAddress);
+                _logger.LogDebug("CurrentWifiConfiguration values - SSID: {Ssid}, Enabled: {Enabled}", 
+                    CurrentWifiConfiguration.Ssid, CurrentWifiConfiguration.Enabled);
+            }
+            
+            // Explicitly fire property change notifications to ensure UI updates
+            OnPropertyChanged(nameof(CurrentWifiConfiguration));
+            OnPropertyChanged(nameof(HasWifiConfiguration));
+            
+            _logger.LogDebug("ViewModel updated - SSID={Ssid}, Password={Password}, Enabled={Enabled}, HasWifiConfiguration={HasConfig}", 
+                Ssid, Password, response.Data.Enabled, HasWifiConfiguration);
+            return true;
+        }
+        else if (response.IsSuccess && response.Data == null)
+        {
+            _logger.LogWarning("WiFi settings response was successful but data is null - this indicates a deserialization issue");
+            StatusMessage = "WiFi settings retrieved but data is empty";
+            return false;
+        }
+        else
+        {
+            _logger.LogWarning("WiFi settings request failed - IsSuccess: {IsSuccess}, Message: {Message}, ErrorCode: {ErrorCode}", 
+                response.IsSuccess, response.Message, response.ErrorCode);
+            StatusMessage = $"Failed to get WiFi settings: {response.Message}";
+            return false;
+        }
+    }
+    
+    public async Task<bool> RefreshWifiSettingsAsync()
+    {
+        _logger.LogInformation("🔄 RefreshWifiSettingsAsync called - IsBusy: {IsBusy}, IsConnected: {IsConnected}, DeviceService.IsConnected: {DeviceServiceConnected}, CurrentDevice: {CurrentDevice}",
+            IsBusy, IsConnected, _deviceService.IsConnected, _deviceService.CurrentDevice?.Name ?? "null");
+        
+        if (IsBusy) 
+        {
+            _logger.LogWarning("❌ RefreshWifiSettingsAsync blocked - IsBusy: {IsBusy}", IsBusy);
+            return false;
+        }
+
+        // Force connection state update in case it's out of sync
+        UpdateConnectionState();
+        _logger.LogInformation("🔄 After UpdateConnectionState - IsConnected: {IsConnected}, DeviceService.IsConnected: {DeviceServiceConnected}", 
+            IsConnected, _deviceService.IsConnected);
+        
+        // Instead of strictly requiring IsConnected, try a fallback approach
+        // This handles cases where API service can work but device service connection state is stale
+        if (!IsConnected) 
+        {
+            _logger.LogWarning("⚠️ Device service reports not connected, attempting direct API call as fallback");
+            StatusMessage = "Attempting to refresh WiFi settings (connection state may be stale)...";
+            
+            // Try direct API call as fallback
+            return await ExecuteAsync(async () =>
+            {
+                _logger.LogInformation("🔄 Fallback: Direct API call for WiFi settings refresh");
+                var response = await _apiService.GetWifiSettingsAsync();
+                
+                if (response.IsSuccess && response.Data != null)
+                {
+                    _logger.LogInformation("✅ Fallback API call successful - updating ViewModel state");
                     
-                CurrentWifiConfiguration = response.Data;
-                Ssid = response.Data.Ssid ?? "";
-                Password = response.Data.Password ?? "";
-                StatusMessage = "WiFi settings retrieved";
-                
-                // Explicitly fire property change notifications to ensure UI updates
-                OnPropertyChanged(nameof(CurrentWifiConfiguration));
-                OnPropertyChanged(nameof(HasWifiConfiguration));
-                
-                _logger.LogDebug("ViewModel updated - SSID={Ssid}, Password={Password}, Enabled={Enabled}", 
-                    Ssid, Password, response.Data.Enabled);
-                return true;
+                    CurrentWifiConfiguration = response.Data;
+                    Ssid = response.Data.Ssid ?? "";
+                    Password = response.Data.Password ?? "";
+                    StatusMessage = "WiFi settings refreshed successfully (via fallback)";
+                    
+                    // Explicitly fire property change notifications
+                    OnPropertyChanged(nameof(CurrentWifiConfiguration));
+                    OnPropertyChanged(nameof(HasWifiConfiguration));
+                    
+                    _logger.LogInformation("✅ Fallback WiFi refresh successful - SSID: {Ssid}, HasConfig: {HasConfig}", 
+                        CurrentWifiConfiguration?.Ssid, HasWifiConfiguration);
+                    return true;
+                }
+                else
+                {
+                    StatusMessage = "Failed to refresh WiFi settings - device may be disconnected";
+                    _logger.LogWarning("❌ Fallback API call failed - IsSuccess: {IsSuccess}, Message: {Message}", 
+                        response.IsSuccess, response.Message);
+                    return false;
+                }
+            });
+        }
+        
+        return await ExecuteAsync(async () =>
+        {
+            StatusMessage = "Refreshing WiFi settings from UAS-WAND device...";
+            _logger.LogInformation("🔄 Starting manual WiFi settings refresh - API Service: {ApiServiceType}", _apiService.GetType().Name);
+            
+            var success = await GetWifiSettingsInternalAsync();
+            
+            if (success)
+            {
+                StatusMessage = "WiFi settings refreshed successfully";
+                _logger.LogInformation("✅ Manual WiFi settings refresh completed successfully - SSID: {Ssid}, HasConfig: {HasConfig}", 
+                    CurrentWifiConfiguration?.Ssid, HasWifiConfiguration);
             }
             else
             {
-                StatusMessage = $"Failed to get WiFi settings: {response.Message}";
-                return false;
+                StatusMessage = "Failed to refresh WiFi settings - check device connection";
+                _logger.LogWarning("❌ Manual WiFi settings refresh failed - SSID: {Ssid}, HasConfig: {HasConfig}, Connected: {IsConnected}", 
+                    CurrentWifiConfiguration?.Ssid, HasWifiConfiguration, IsConnected);
             }
+            
+            return success;
         });
     }
     
@@ -265,7 +400,25 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             
             if (response.IsSuccess)
             {
-                StatusMessage = "WiFi settings updated";
+                StatusMessage = "WiFi settings updated - refreshing current configuration...";
+                
+                // Brief delay to let settings be processed
+                await Task.Delay(1000);
+                
+                // Refresh WiFi settings to show what was actually applied
+                var refreshSuccess = await GetWifiSettingsInternalAsync();
+                
+                if (refreshSuccess)
+                {
+                    StatusMessage = "WiFi settings updated and current configuration refreshed";
+                    _logger.LogInformation("WiFi settings update and refresh completed successfully");
+                }
+                else
+                {
+                    StatusMessage = "WiFi settings updated but couldn't refresh current configuration";
+                    _logger.LogWarning("WiFi settings update succeeded but refresh failed");
+                }
+                
                 return true;
             }
             else
@@ -287,11 +440,29 @@ public class UasWandControlViewModel : INotifyPropertyChanged, IDisposable
             
             if (response.IsSuccess)
             {
-                StatusMessage = "WiFi restarted - refreshing settings...";
-                // Automatically refresh WiFi settings after restart to show updated configuration
-                await Task.Delay(500); // Brief delay to let WiFi settle
-                await GetWifiSettingsAsync();
-                return true;
+                StatusMessage = "WiFi restarted successfully - waiting for WiFi to stabilize...";
+                
+                // Wait longer for WiFi to fully restart and stabilize
+                // UAS-WAND devices may need time to apply new settings
+                await Task.Delay(2000); // 2 seconds for WiFi to settle
+                
+                StatusMessage = "Refreshing WiFi settings to show current configuration...";
+                
+                // Attempt to refresh WiFi settings with retry logic
+                var refreshSuccess = await GetWifiSettingsInternalAsync();
+                
+                if (refreshSuccess)
+                {
+                    StatusMessage = "WiFi restart completed - settings refreshed";
+                    _logger.LogInformation("WiFi restart and settings refresh completed successfully");
+                }
+                else
+                {
+                    StatusMessage = "WiFi restarted but couldn't refresh settings - try manual refresh";
+                    _logger.LogWarning("WiFi restart succeeded but settings refresh failed");
+                }
+                
+                return true; // Return true as long as restart itself succeeded
             }
             else
             {

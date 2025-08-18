@@ -420,13 +420,13 @@ public partial class SettingsPage : ContentPage
                 if (isRunning)
                 {
                     statusColor = Colors.LimeGreen; // Bright green for running
-                    statusText = "🟢 Running";
+                    statusText = "Running";
                     statusSubText = "Simulator is active and ready";
                 }
                 else
                 {
                     statusColor = Colors.LightGray; // Gray for stopped
-                    statusText = "⚪ Stopped";
+                    statusText = "Stopped";
                     statusSubText = "Simulator is not running";
                 }
                 
@@ -443,9 +443,9 @@ public partial class SettingsPage : ContentPage
                 StartSimulatorButton.Opacity = StartSimulatorButton.IsEnabled ? 1.0 : 0.6;
                 StopSimulatorButton.Opacity = StopSimulatorButton.IsEnabled ? 1.0 : 0.6;
                 
-                // Update button text with status indicators
-                StartSimulatorButton.Text = isRunning ? "✓ Already Running" : "▶️ Start Simulator";
-                StopSimulatorButton.Text = isRunning ? "⏹️ Stop Simulator" : "✓ Already Stopped";
+                // Update button text based on running state
+                StartSimulatorButton.Text = isRunning ? "Already Running" : "Start Simulator";
+                StopSimulatorButton.Text = isRunning ? "Stop Simulator" : "Already Stopped";
                 
                 // Update detailed info display
                 if (isRunning && status != null)
@@ -478,7 +478,7 @@ public partial class SettingsPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                SimulatorStatusLabel.Text = "❌ Error";
+                SimulatorStatusLabel.Text = "Error";
                 SimulatorStatusSubLabel.Text = "Status check failed";
                 SimulatorInfoLabel.Text = "⚠️ Unable to determine simulator status";
                 
@@ -507,13 +507,13 @@ public partial class SettingsPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Orange);
-                SimulatorStatusLabel.Text = "🟠 Starting...";
+                SimulatorStatusLabel.Text = "Starting...";
                 SimulatorStatusSubLabel.Text = "Please wait while simulator starts";
                 
                 // Disable both buttons during operation
                 StartSimulatorButton.IsEnabled = false;
                 StopSimulatorButton.IsEnabled = false;
-                StartSimulatorButton.Text = "⏳ Starting...";
+                StartSimulatorButton.Text = "Starting...";
                 StartSimulatorButton.Opacity = 0.6;
                 StopSimulatorButton.Opacity = 0.6;
             });
@@ -547,7 +547,7 @@ public partial class SettingsPage : ContentPage
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                    SimulatorStatusLabel.Text = "❌ Start Failed";
+                    SimulatorStatusLabel.Text = "Start Failed";
                     SimulatorStatusSubLabel.Text = "Could not start simulator";
                 });
                 
@@ -566,7 +566,7 @@ public partial class SettingsPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                SimulatorStatusLabel.Text = "❌ Error";
+                SimulatorStatusLabel.Text = "Error";
                 SimulatorStatusSubLabel.Text = "Start operation failed";
             });
             
@@ -595,13 +595,13 @@ public partial class SettingsPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Orange);
-                SimulatorStatusLabel.Text = "🟠 Stopping...";
+                SimulatorStatusLabel.Text = "Stopping...";
                 SimulatorStatusSubLabel.Text = "Please wait while simulator stops";
                 
                 // Disable both buttons during operation
                 StartSimulatorButton.IsEnabled = false;
                 StopSimulatorButton.IsEnabled = false;
-                StopSimulatorButton.Text = "⏳ Stopping...";
+                StopSimulatorButton.Text = "Stopping...";
                 StartSimulatorButton.Opacity = 0.6;
                 StopSimulatorButton.Opacity = 0.6;
             });
@@ -635,7 +635,7 @@ public partial class SettingsPage : ContentPage
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                    SimulatorStatusLabel.Text = "❌ Stop Failed";
+                    SimulatorStatusLabel.Text = "Stop Failed";
                     SimulatorStatusSubLabel.Text = "Could not stop simulator";
                 });
                 
@@ -654,7 +654,7 @@ public partial class SettingsPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SimulatorStatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                SimulatorStatusLabel.Text = "❌ Error";
+                SimulatorStatusLabel.Text = "Error";
                 SimulatorStatusSubLabel.Text = "Stop operation failed";
             });
             
