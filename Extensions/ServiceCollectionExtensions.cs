@@ -6,6 +6,8 @@ using Inductobot.Services.Communication;
 using Inductobot.Services.Discovery;
 using Inductobot.ViewModels;
 using Inductobot.Models.Device;
+using Inductobot.Framework.UI;
+using Inductobot.Framework.Device;
 
 namespace Inductobot.Extensions;
 
@@ -28,6 +30,10 @@ public static class ServiceCollectionExtensions
         
         // Discovery Service (parallel to device service)
         services.AddSingleton<IUasWandDiscoveryService, UasWandDiscoveryService>();
+        
+        // Framework Components
+        services.AddTransient<ButtonOperationHandler>();
+        services.AddTransient<WiFiSettingsManager>();
         
         // UI Layer (depends only on high-level services)
         // NOTE: Singleton ensures connection state persists across page navigation
