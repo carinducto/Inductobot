@@ -11,5 +11,6 @@ public partial class AppShell : Shell
 		// Register routes for dependency injection support
 		Routing.RegisterRoute("DeviceConnection", typeof(DeviceConnectionPage));
 		Routing.RegisterRoute("DeviceControl", typeof(MainPage));
+		Routing.RegisterRoute(nameof(LogViewerPage), typeof(LogViewerPage));
 	}
 }

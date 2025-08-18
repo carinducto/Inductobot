@@ -8,12 +8,14 @@ public partial class SettingsPage : ContentPage
 {
     private readonly ILogger<SettingsPage> _logger;
     private readonly IConfigurationService _config;
+    private readonly ILogViewingService _logService;
     
-    public SettingsPage(ILogger<SettingsPage> logger, IConfigurationService config)
+    public SettingsPage(ILogger<SettingsPage> logger, IConfigurationService config, ILogViewingService logService)
     {
         InitializeComponent();
         _logger = logger;
         _config = config;
+        _logService = logService;
         
         _logger.LogInformation("SettingsPage constructor called");
         
@@ -23,7 +25,7 @@ public partial class SettingsPage : ContentPage
     }
 
     // Parameterless constructor for XAML DataTemplate (manually resolve dependencies)
-    public SettingsPage() : this(GetService<ILogger<SettingsPage>>(), GetService<IConfigurationService>())
+    public SettingsPage() : this(GetService<ILogger<SettingsPage>>(), GetService<IConfigurationService>(), GetService<ILogViewingService>())
     {
     }
 
@@ -250,17 +252,19 @@ public partial class SettingsPage : ContentPage
     {
         try
         {
-            StatusLabel.Text = "Opening logs...";
+            StatusLabel.Text = "Opening log viewer...";
             
-            // TODO: Implement log viewing functionality
-            await DisplayAlert("View Logs", "Log viewing functionality will be implemented in a future update.", "OK");
+            // Create and navigate to the log viewer page directly
+            var logViewerPage = new LogViewerPage();
+            await Navigation.PushAsync(logViewerPage);
             
             StatusLabel.Text = "Ready";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error viewing logs");
-            StatusLabel.Text = "Error viewing logs";
+            _logger.LogError(ex, "Error opening log viewer");
+            StatusLabel.Text = "Error opening log viewer";
+            await DisplayAlert("Error", $"Failed to open log viewer: {ex.Message}", "OK");
         }
     }
 
@@ -276,19 +280,29 @@ public partial class SettingsPage : ContentPage
             {
                 StatusLabel.Text = "Clearing logs...";
                 
-                // TODO: Implement log clearing functionality
-                await Task.Delay(1000); // Simulate clearing
+                // Get all log files and delete them
+                var logFiles = await _logService.GetLogFilesAsync();
+                int deletedCount = 0;
                 
-                await DisplayAlert("Success", "Log files have been cleared.", "OK");
-                StatusLabel.Text = "Logs cleared";
+                foreach (var logFile in logFiles)
+                {
+                    if (await _logService.DeleteLogFileAsync(logFile.FilePath))
+                    {
+                        deletedCount++;
+                    }
+                }
                 
-                _logger.LogInformation("Log files cleared by user");
+                await DisplayAlert("Success", $"Cleared {deletedCount} log files.", "OK");
+                StatusLabel.Text = $"Cleared {deletedCount} log files";
+                
+                _logger.LogInformation("Cleared {DeletedCount} log files by user request", deletedCount);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error clearing logs");
             StatusLabel.Text = "Error clearing logs";
+            await DisplayAlert("Error", "Failed to clear log files.", "OK");
         }
     }
 

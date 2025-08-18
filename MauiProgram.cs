@@ -66,6 +66,7 @@ public static class MauiProgram
 		// Register Configuration Services
 		builder.Services.AddSingleton<IConfigurationService, Services.Core.ConfigurationService>();
 		builder.Services.AddSingleton<IRuntimeLoggingService, Services.Core.RuntimeLoggingService>();
+		builder.Services.AddSingleton<ILogViewingService, Services.Core.LogViewingService>();
 		
 		// Register UAS-WAND Simulator (for testing without real device)
 		builder.Services.AddSingleton<UasWandSimulatorService>();
@@ -80,6 +81,7 @@ public static class MauiProgram
 		// Register Views
 		builder.Services.AddTransient<MainPage>();
 		builder.Services.AddTransient<DeviceConnectionPage>();
+		builder.Services.AddTransient<LogViewerPage>();
 
 		// Configure logging
 		builder.Logging.ClearProviders();
