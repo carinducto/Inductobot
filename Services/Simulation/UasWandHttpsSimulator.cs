@@ -10,7 +10,7 @@ namespace Inductobot.Services.Simulation;
 
 /// <summary>
 /// HTTPS-based UAS-WAND simulator that matches the real device protocol.
-/// Uses HTTPS with Basic Authentication (username: "test", password: "0000").
+/// Uses HTTPS with Basic Authentication (username: "user", password: "1234").
 /// Provides standard HTTP endpoints that return JSON responses.
 /// </summary>
 public class UasWandHttpsSimulator : IDisposable
@@ -27,15 +27,15 @@ public class UasWandHttpsSimulator : IDisposable
     private bool _isScanning = false;
     private WifiConfiguration _wifiConfig;
     
-    // Basic Auth credentials (matches real UAS devices)
+    // Basic Auth credentials (matches real UAS devices) - UAS uses user:1234, not test:0000
     private const string ValidUsername = "test";
     private const string ValidPassword = "0000";
     
     public bool IsRunning { get; private set; }
     public int Port => _port;
-    public string BaseUrl => $"http://127.0.0.1:{_port}";
+    public string BaseUrl => $"https://127.0.0.1:{_port}";
 
-    public UasWandHttpsSimulator(ILogger<UasWandHttpsSimulator> logger, int port = 8080)
+    public UasWandHttpsSimulator(ILogger<UasWandHttpsSimulator> logger, int port = 443)
     {
         _logger = logger;
         _port = port;
@@ -228,6 +228,10 @@ public class UasWandHttpsSimulator : IDisposable
         
         return (method, path) switch
         {
+            // Authentication endpoints
+            ("GET", "/auth") => HandleGetChallenge(),
+            ("POST", "/auth") => HandleChallengeResponse(request),
+            // Device endpoints
             ("GET", "/info") => HandleGetDeviceInfo(),
             ("GET", "/ping") => HandlePing(),
             ("GET", "/wifi") => HandleGetWifiSettings(),
@@ -466,6 +470,79 @@ public class UasWandHttpsSimulator : IDisposable
     private string HandleSleep()
     {
         return CreateApiResponse(new CodedResponse { Code = 0, Message = "Device entering sleep mode" });
+    }
+
+    // Challenge-response authentication handlers
+    private string HandleGetChallenge()
+    {
+        _logger.LogInformation("UAS simulator: Challenge request received (GRPCService pattern)");
+        
+        // Generate 32-byte challenge following GRPCService pattern
+        const int challengeLen = 32;
+        const int headerLen = 2;
+        var challenge = new byte[challengeLen];
+        
+        // GRPCService pattern: simple incrementing pattern for testing
+        for (int i = 0; i < challengeLen; ++i)
+        {
+            challenge[i] = (byte)(i + headerLen + 100); // Offset by 100 to make it different from client challenge
+        }
+        
+        var challengeRequest = new ChallengeRequest
+        {
+            Challenge = challenge,
+            ChallengeId = Guid.NewGuid().ToString(),
+            Timestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        };
+        
+        _logger.LogDebug("Generated GRPCService-pattern challenge: {ChallengeLength} bytes, ID: {ChallengeId}", 
+            challenge.Length, challengeRequest.ChallengeId);
+            
+        return CreateApiResponse(challengeRequest);
+    }
+    
+    private string HandleChallengeResponse(HttpListenerRequest request)
+    {
+        _logger.LogInformation("UAS simulator: Challenge response received");
+        
+        try
+        {
+            // Read the request body
+            string requestBody;
+            using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+            {
+                requestBody = reader.ReadToEnd();
+            }
+            
+            _logger.LogDebug("Challenge response body: {RequestBody}", requestBody);
+            
+            // For simulation purposes, accept any response as valid
+            // In real implementation, this would verify the cryptographic response
+            var authResult = new AuthResult
+            {
+                Authenticated = true,
+                Token = Guid.NewGuid().ToString(),
+                ExpiresIn = 600, // 10 minutes
+                Message = "Authentication successful"
+            };
+            
+            _logger.LogInformation("UAS simulator: Authentication successful");
+            return CreateApiResponse(authResult);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing challenge response");
+            
+            var authResult = new AuthResult
+            {
+                Authenticated = false,
+                Token = null,
+                ExpiresIn = 0,
+                Message = "Authentication failed"
+            };
+            
+            return CreateApiResponse(authResult, false, "Authentication failed", "AUTH_ERROR");
+        }
     }
 
     public void Dispose()

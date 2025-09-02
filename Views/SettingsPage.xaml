@@ -154,7 +154,7 @@
                             <Label Grid.Column="0" Grid.Row="1" Text="Default Ports to Scan:" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
                             <Entry Grid.Column="1" Grid.Row="1" 
                                    x:Name="DefaultPortsEntry" 
-                                   Text="80,443,8080,8443"
+                                   Text="443,80,8080,8443"
                                    WidthRequest="150"
                                    HorizontalOptions="End"
                                    TextChanged="OnEntryTextChanged"/>

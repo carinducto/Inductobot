@@ -28,6 +28,48 @@ public class UasWandApiService : IUasWandApiService
         };
     }
     
+    public void SetBaseUrl(string baseUrl)
+    {
+        // This implementation doesn't use base URLs - it uses transport layer
+        _logger.LogDebug("SetBaseUrl called but not implemented in TCP-based UAS API service");
+    }
+    
+    public void SetCredentials(string username, string password)
+    {
+        // This implementation doesn't use credentials - handled by transport layer
+        _logger.LogDebug("SetCredentials called but not implemented in TCP-based UAS API service");
+    }
+    
+    public void SetDeviceKeys(string deviceKey1, string deviceKey2)
+    {
+        // This implementation doesn't use device keys - handled by transport layer
+        _logger.LogDebug("SetDeviceKeys called but not implemented in TCP-based UAS API service");
+    }
+    
+    public async Task<ApiResponse<object>> ProvisionDeviceKeysAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("ProvisionDeviceKeysAsync not implemented in TCP-based UAS API service");
+        return ApiResponse<object>.Failure("Not implemented in TCP transport", "NOT_IMPLEMENTED");
+    }
+    
+    public async Task<ApiResponse<object>> RemoveProvisioningAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("RemoveProvisioningAsync not implemented in TCP-based UAS API service");
+        return ApiResponse<object>.Failure("Not implemented in TCP transport", "NOT_IMPLEMENTED");
+    }
+    
+    public async Task<ApiResponse<object>> GetLoginStatusAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("GetLoginStatusAsync not implemented in TCP-based UAS API service");
+        return ApiResponse<object>.Failure("Not implemented in TCP transport", "NOT_IMPLEMENTED");
+    }
+    
+    public async Task<ApiResponse<object>> LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("LogoutAsync not implemented in TCP-based UAS API service");
+        return ApiResponse<object>.Failure("Not implemented in TCP transport", "NOT_IMPLEMENTED");
+    }
+    
     public async Task<ApiResponse<UASDeviceInfo>> GetDeviceInfoAsync(CancellationToken cancellationToken = default)
     {
         return await SendHttpCommandAsync<UASDeviceInfo>("/info", HttpMethod.Get, null, cancellationToken);

@@ -64,7 +64,9 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
             
             // Step 1: Set up API service base URL
             ReportProgress("⚙️ Configuring HTTP client...");
-            var baseUrl = $"http://{ipAddress}:{port}";
+            // Determine protocol based on port - 443, 8443 use HTTPS, others use HTTP
+            var protocol = (port == 443 || port == 8443) ? "https" : "http";
+            var baseUrl = $"{protocol}://{ipAddress}:{port}";
             _apiService.SetBaseUrl(baseUrl);
             _logger.LogInformation("Attempting to connect to UAS-WAND at {BaseUrl}", baseUrl);
             
@@ -215,7 +217,7 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
         return errorCode switch
         {
             "UNAUTHORIZED" => 
-                "Authentication failed. UAS-WAND devices require username 'test' and password '0000'.",
+                "Authentication failed. UAS-WAND devices require username 'user' and password '1234'.",
             "TIMEOUT" => 
                 "Request timed out. Device may be busy or network connection is slow.",
             "HTTP_REQUEST_ERROR" => 
@@ -278,7 +280,9 @@ public class UasWandHttpDeviceService : IUasWandDeviceService
     {
         try
         {
-            var baseUrl = $"http://{ipAddress}:{port}";
+            // Determine protocol based on port - 443, 8443 use HTTPS, others use HTTP
+            var protocol = (port == 443 || port == 8443) ? "https" : "http";
+            var baseUrl = $"{protocol}://{ipAddress}:{port}";
             
             // Create a temporary HTTP API service for testing
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());

@@ -142,5 +142,6 @@ public enum DeviceType
 {
     WandV3,
     Simulator,
-    Custom
+    Custom,
+    Generic
 }

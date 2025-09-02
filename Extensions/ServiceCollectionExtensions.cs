@@ -77,6 +77,18 @@ public class MockUasWandTransport : IUasWandTransport
 
 public class MockUasWandApiService : IUasWandApiService
 {
+    public void SetBaseUrl(string baseUrl) { }
+    public void SetCredentials(string username, string password) { }
+    public void SetDeviceKeys(string deviceKey1, string deviceKey2) { }
+    public Task<Models.Commands.ApiResponse<object>> ProvisionDeviceKeysAsync(CancellationToken cancellationToken = default) 
+        => Task.FromResult(Models.Commands.ApiResponse<object>.Success(new object()));
+    public Task<Models.Commands.ApiResponse<object>> RemoveProvisioningAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Models.Commands.ApiResponse<object>.Success(new object()));
+    public Task<Models.Commands.ApiResponse<object>> GetLoginStatusAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Models.Commands.ApiResponse<object>.Success(new object()));
+    public Task<Models.Commands.ApiResponse<object>> LogoutAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Models.Commands.ApiResponse<object>.Success(new object()));
+    
     public Task<Models.Commands.ApiResponse<Models.Device.UASDeviceInfo>> GetDeviceInfoAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(Models.Commands.ApiResponse<Models.Device.UASDeviceInfo>.Success(new Models.Device.UASDeviceInfo { Name = "UAS-WAND_MockDevice" }));
     
@@ -130,6 +142,7 @@ public class MockUasWandDiscoveryService : IUasWandDiscoveryService
     public event EventHandler<Models.Device.UASDeviceInfo>? DeviceDiscovered;
     public event EventHandler<Models.Device.UASDeviceInfo>? DeviceRemoved;
     public event EventHandler<bool>? ScanningStateChanged;
+    public event EventHandler<Models.Discovery.ScanProgress>? ScanProgressChanged;
     
     public Task StartScanAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public void StopScan() { }

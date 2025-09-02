@@ -26,7 +26,7 @@ public class ConfigurationService : IConfigurationService
 
     // Discovery Settings
     public int ScanTimeoutMinutes => GetIntSetting("ScanTimeout", 2);
-    public int[] DefaultPorts => ParsePorts(Preferences.Get("DefaultPorts", "80,443,8080,8443"));
+    public int[] DefaultPorts => ParsePorts(Preferences.Get("DefaultPorts", "80,8080,5000,443,8443")); // HTTP ports first due to ESP32 memory constraints
     public bool AutoDiscovery => Preferences.Get("AutoDiscovery", false);
 
     // UI Settings
@@ -79,12 +79,12 @@ public class ConfigurationService : IConfigurationService
                 .Select(int.Parse)
                 .ToArray();
 
-            return ports.Length > 0 ? ports : new[] { 80, 443, 8080, 8443 };
+            return ports.Length > 0 ? ports : new[] { 80, 8080, 5000, 443, 8443 }; // HTTP ports first
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error parsing ports string '{PortsString}', using defaults", portsString);
-            return new[] { 80, 443, 8080, 8443 };
+            return new[] { 80, 8080, 5000, 443, 8443 }; // HTTP ports first due to ESP32 SSL memory issues
         }
     }
 

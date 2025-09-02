@@ -83,7 +83,7 @@ public partial class SettingsPage : ContentPage
             AutoReconnectSwitch.IsToggled = Preferences.Get("AutoReconnect", true);
             
             ScanTimeoutEntry.Text = Preferences.Get("ScanTimeout", "2");
-            DefaultPortsEntry.Text = Preferences.Get("DefaultPorts", "80,443,8080,8443");
+            DefaultPortsEntry.Text = Preferences.Get("DefaultPorts", "80,8080,5000,443,8443");
             AutoDiscoverySwitch.IsToggled = Preferences.Get("AutoDiscovery", false);
             
             var theme = Preferences.Get("Theme", "System");

@@ -102,13 +102,61 @@ public class UasWandDeviceService : IUasWandDeviceService, IDisposable
     {
         _logger.LogDebug("Testing connection to UAS-WAND device at {IpAddress}:{Port}", ipAddress, port);
         
-        // Create a temporary transport for testing  
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug());
-        var testLogger = loggerFactory.CreateLogger<Communication.UasWandTcpTransport>();
-        using var testTransport = new Communication.UasWandTcpTransport(testLogger, _config);
+        // For ESP32 UAS devices, test HTTPS connectivity with TLS 1.2 compatibility
+        var httpsResult = await TestHttpsConnectionAsync(ipAddress, port, cancellationToken);
+        if (httpsResult)
+        {
+            return true;
+        }
         
+        // Fallback to TCP transport for legacy compatibility
+        return await TestTcpConnectionAsync(ipAddress, port, cancellationToken);
+    }
+    
+    private async Task<bool> TestHttpsConnectionAsync(string ipAddress, int port, CancellationToken cancellationToken)
+    {
         try
         {
+            _logger.LogDebug("Testing HTTPS connection to ESP32 UAS device at {IpAddress}:{Port}", ipAddress, port);
+            
+            // Create temporary HTTPS API service for testing with ESP32 TLS 1.2 compatibility
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug());
+            var testLogger = loggerFactory.CreateLogger<Api.UasWandHttpApiService>();
+            using var httpsApiService = new Api.UasWandHttpApiService(testLogger);
+            
+            // Use HTTPS with ESP32 TLS compatibility
+            var httpsBaseUrl = $"https://{ipAddress}:{port}";
+            httpsApiService.SetBaseUrl(httpsBaseUrl);
+            
+            var response = await httpsApiService.GetDeviceInfoAsync(cancellationToken);
+            if (response.IsSuccess)
+            {
+                _logger.LogInformation("HTTPS connection successful to ESP32 UAS device at {IpAddress}:{Port}", ipAddress, port);
+                return true;
+            }
+            
+            _logger.LogDebug("HTTPS connection failed for ESP32 UAS device at {IpAddress}:{Port}: {ErrorCode} - {Message}", 
+                ipAddress, port, response.ErrorCode, response.Message);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "HTTPS connection test failed for ESP32 UAS device at {IpAddress}:{Port}", ipAddress, port);
+            return false;
+        }
+    }
+    
+    private async Task<bool> TestTcpConnectionAsync(string ipAddress, int port, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogDebug("Testing TCP connection to {IpAddress}:{Port}", ipAddress, port);
+            
+            // Create a temporary transport for testing  
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug());
+            var testLogger = loggerFactory.CreateLogger<Communication.UasWandTcpTransport>();
+            using var testTransport = new Communication.UasWandTcpTransport(testLogger, _config);
+            
             _logger.LogDebug("Attempting to connect to {IpAddress}:{Port}...", ipAddress, port);
             var connected = await testTransport.ConnectAsync(ipAddress, port, cancellationToken);
             _logger.LogDebug("Connect result for {IpAddress}:{Port}: {Connected}", ipAddress, port, connected);

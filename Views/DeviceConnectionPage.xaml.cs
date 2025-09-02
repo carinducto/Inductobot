@@ -15,6 +15,8 @@ public partial class DeviceConnectionPage : ContentPage
     private readonly INetworkInfoService _networkInfoService;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
+    private ObservableCollection<UASDeviceInfo> _filteredDevices = new();
+    private bool _showUasOnly = true;
     private CancellationTokenSource? _connectionCts;
     private CancellationTokenSource? _scanCts;
     
@@ -84,7 +86,7 @@ public partial class DeviceConnectionPage : ContentPage
     
     private void InitializeUI()
     {
-        DeviceList.ItemsSource = _devices;
+        DeviceList.ItemsSource = _filteredDevices;
         UpdateDeviceCount();
     }
     
@@ -95,6 +97,7 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered += OnDeviceDiscovered;
         _discoveryService.DeviceRemoved += OnDeviceRemoved;
         _discoveryService.ScanningStateChanged += OnScanningStateChanged;
+        _discoveryService.ScanProgressChanged += OnScanProgressChanged;
         _deviceService.ConnectionStateChanged += OnConnectionStateChanged;
         
         _logger.LogInformation("Event subscriptions complete");
@@ -136,6 +139,12 @@ public partial class DeviceConnectionPage : ContentPage
                 device.LastSeen = DateTime.Now;
                 
                 _devices.Add(device);
+                
+                // Apply filter to existing device
+                if (!_showUasOnly || IsUasDevice(device))
+                {
+                    _filteredDevices.Add(device);
+                }
                 _logger.LogInformation("Added existing device to UI: {DeviceName}", device.Name);
             }
         }
@@ -191,6 +200,12 @@ public partial class DeviceConnectionPage : ContentPage
                         
                         _devices.Add(device);
                         _logger.LogInformation("Added device to UI collection. Total devices: {Count}", _devices.Count);
+                        
+                        // Apply filter to new device
+                        if (!_showUasOnly || IsUasDevice(device))
+                        {
+                            _filteredDevices.Add(device);
+                        }
                         UpdateDeviceCount();
                     }
                     else
@@ -245,6 +260,7 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.DeviceDiscovered -= OnDeviceDiscovered;
         _discoveryService.DeviceRemoved -= OnDeviceRemoved;
         _discoveryService.ScanningStateChanged -= OnScanningStateChanged;
+        _discoveryService.ScanProgressChanged -= OnScanProgressChanged;
         _deviceService.ConnectionStateChanged -= OnConnectionStateChanged;
         
         // Dispose cancellation tokens
@@ -321,6 +337,7 @@ public partial class DeviceConnectionPage : ContentPage
             try
             {
                 _devices.Clear();
+                _filteredDevices.Clear();
                 
                 // Start scan with user cancellation support
                 var scanTask = _discoveryService.StartScanAsync(_scanCts.Token);
@@ -338,6 +355,12 @@ public partial class DeviceConnectionPage : ContentPage
                             {
                                 _logger.LogInformation("Adding device found by discovery but not via events: {DeviceName}", device.Name);
                                 _devices.Add(device);
+                                
+                                // Apply filter to post-scan device
+                                if (!_showUasOnly || IsUasDevice(device))
+                                {
+                                    _filteredDevices.Add(device);
+                                }
                             }
                         }
                         UpdateDeviceCount();
@@ -431,13 +454,13 @@ public partial class DeviceConnectionPage : ContentPage
         {
             // Immediate visual feedback
             SetButtonLoading(button, "Adding...");
-            ShowStatusToast($"Adding device {ipAddress}:{port}...", ToastType.Info);
+            ShowStatusToast($"Adding device {ipAddress}:{port} (HTTP port 80 recommended for ESP32)...", ToastType.Info);
             
             await _discoveryService.AddDeviceManuallyAsync(ipAddress, port);
             
-            // Clear inputs on success
+            // Clear IP input on success, keep port for easier multiple adds  
             IpAddressEntry.Text = string.Empty;
-            PortEntry.Text = "80";
+            // Keep the same port for adding multiple devices on same port
             
             SetButtonSuccess(button, "✅ Added");
             ShowStatusToast($"Device {ipAddress}:{port} added successfully", ToastType.Success);
@@ -468,6 +491,17 @@ public partial class DeviceConnectionPage : ContentPage
                     SetButtonNormal(button, originalButtonText);
                 });
             });
+        }
+    }
+    
+    private void OnQuickPortClicked(object sender, EventArgs e)
+    {
+        if (sender is Button button)
+        {
+            PortEntry.Text = button.Text;
+            var portNum = button.Text;
+            var protocol = portNum == "80" || portNum == "8080" ? "HTTP" : "HTTPS";
+            ShowStatusToast($"Port set to {portNum} ({protocol})", ToastType.Info);
         }
     }
     
@@ -504,7 +538,8 @@ public partial class DeviceConnectionPage : ContentPage
         {
             // Immediate visual feedback
             SetButtonLoading(button, "Connecting...");
-            ShowStatusToast($"Connecting to {ipAddress}:{port}...", ToastType.Info);
+            var protocol = port == 80 || port == 8080 || port == 5000 ? "HTTP" : "HTTPS";
+            ShowStatusToast($"Connecting to {ipAddress}:{port} via {protocol}...", ToastType.Info);
             
             await ConnectToDeviceAsync(ipAddress, port);
             
@@ -845,6 +880,14 @@ public partial class DeviceConnectionPage : ContentPage
                     if (toRemove != null)
                     {
                         _devices.Remove(toRemove);
+                        
+                        // Also remove from filtered collection
+                        var toRemoveFiltered = _filteredDevices.FirstOrDefault(d => d.IpAddress == device.IpAddress && d.Port == device.Port);
+                        if (toRemoveFiltered != null)
+                        {
+                            _filteredDevices.Remove(toRemoveFiltered);
+                        }
+                        
                         UpdateDeviceCount();
                     }
                 }
@@ -871,6 +914,18 @@ public partial class DeviceConnectionPage : ContentPage
                     ScanIndicator.IsRunning = isScanning;
                     ScanButton.Text = isScanning ? "Stop Scan" : "Scan Network";
                     ScanButton.IsEnabled = true;
+                    
+                    // Show/hide progress frame based on scanning state
+                    ScanProgressFrame.IsVisible = isScanning;
+                    
+                    // Reset progress when scanning stops
+                    if (!isScanning)
+                    {
+                        ScanProgressBar.Progress = 0;
+                        ScanPercentLabel.Text = "0%";
+                        ScanStatusLabel.Text = "Scanning...";
+                        ScanDetailsLabel.IsVisible = false;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -881,6 +936,71 @@ public partial class DeviceConnectionPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in OnScanningStateChanged event handler");
+        }
+    }
+    
+    private void OnScanProgressChanged(object? sender, Models.Discovery.ScanProgress progress)
+    {
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
+                    // Update progress bar and percentage
+                    ScanProgressBar.Progress = progress.PercentComplete / 100.0;
+                    ScanPercentLabel.Text = $"{progress.PercentComplete}%";
+                    
+                    // Update status text
+                    ScanStatusLabel.Text = progress.CurrentStep;
+                    
+                    // Show details if debugging info is available
+                    if (!string.IsNullOrEmpty(progress.DebugInfo))
+                    {
+                        var detailsText = "";
+                        
+                        if (progress.TotalSubnets > 0)
+                        {
+                            detailsText = $"Subnets: {progress.SubnetsScanned}/{progress.TotalSubnets}";
+                        }
+                        
+                        if (progress.TotalHosts > 0)
+                        {
+                            detailsText += string.IsNullOrEmpty(detailsText) ? "" : " | ";
+                            detailsText += $"Hosts: {progress.HostsScanned}/{progress.TotalHosts}";
+                        }
+                        
+                        if (progress.UasDevicesFound > 0)
+                        {
+                            detailsText += string.IsNullOrEmpty(detailsText) ? "" : " | ";
+                            detailsText += $"Devices: {progress.UasDevicesFound}";
+                        }
+                        
+                        if (!string.IsNullOrEmpty(detailsText))
+                        {
+                            ScanDetailsLabel.Text = detailsText;
+                            ScanDetailsLabel.IsVisible = true;
+                        }
+                        else
+                        {
+                            ScanDetailsLabel.Text = progress.DebugInfo;
+                            ScanDetailsLabel.IsVisible = true;
+                        }
+                    }
+                    else
+                    {
+                        ScanDetailsLabel.IsVisible = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating scan progress UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnScanProgressChanged event handler");
         }
     }
     
@@ -981,7 +1101,7 @@ public partial class DeviceConnectionPage : ContentPage
     {
         try
         {
-            var count = _devices?.Count ?? 0;
+            var count = _filteredDevices?.Count ?? 0;
             DeviceCountLabel.Text = count == 1 ? "1 device" : $"{count} devices";
         }
         catch (Exception ex)
@@ -989,6 +1109,60 @@ public partial class DeviceConnectionPage : ContentPage
             _logger.LogError(ex, "Error updating device count display");
             DeviceCountLabel.Text = "0 devices"; // Fallback
         }
+    }
+    
+    private void OnFilterSwitchToggled(object sender, ToggledEventArgs e)
+    {
+        try
+        {
+            _showUasOnly = e.Value;
+            ApplyDeviceFilter();
+            _logger.LogDebug("Device filter changed to: {FilterMode}", _showUasOnly ? "UAS Only" : "All Devices");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling filter switch toggle");
+        }
+    }
+    
+    private void ApplyDeviceFilter()
+    {
+        try
+        {
+            _filteredDevices.Clear();
+            
+            var devicesToShow = _showUasOnly 
+                ? _devices.Where(IsUasDevice)
+                : _devices;
+            
+            foreach (var device in devicesToShow)
+            {
+                _filteredDevices.Add(device);
+            }
+            
+            UpdateDeviceCount();
+            _logger.LogDebug("Applied device filter. Showing {Count} of {Total} devices", 
+                _filteredDevices.Count, _devices.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error applying device filter");
+        }
+    }
+    
+    private static bool IsUasDevice(UASDeviceInfo device)
+    {
+        // Check if device is UAS or simulated UAS
+        var deviceType = device.DeviceType?.ToLower() ?? "";
+        var deviceName = device.Name?.ToLower() ?? "";
+        
+        var isUas = deviceType.Contains("uas") || 
+                   deviceName.Contains("uas") || 
+                   deviceName.Contains("simulator");
+                   
+        System.Diagnostics.Debug.WriteLine($"IsUasDevice: '{device.Name}' (type: '{device.DeviceType}') -> {isUas}");
+        
+        return isUas;
     }
 
     #region Network Information

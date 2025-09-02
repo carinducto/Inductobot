@@ -35,6 +35,53 @@
                                     Grid.Column="3"/>
                         </Grid>
                         
+                        <!-- Device Filter -->
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <Label Text="Show UAS devices only" 
+                                   FontSize="14" 
+                                   VerticalOptions="Center"/>
+                            
+                            <Switch x:Name="UasOnlyFilterSwitch"
+                                    IsToggled="True"
+                                    Toggled="OnFilterSwitchToggled"
+                                    ThumbColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                                    OnColor="{AppThemeBinding Light=#E3F2FD, Dark=#1A237E}"
+                                    Grid.Column="1"/>
+                        </Grid>
+                        
+                        <!-- Scan Progress -->
+                        <Frame x:Name="ScanProgressFrame" 
+                               BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+                               BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                               Padding="15"
+                               IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <Label x:Name="ScanStatusLabel" 
+                                           Text="Scanning..."
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           VerticalOptions="Center"/>
+                                    <Label x:Name="ScanPercentLabel"
+                                           Text="0%"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           HorizontalTextAlignment="End"
+                                           Grid.Column="1"/>
+                                </Grid>
+                                
+                                <ProgressBar x:Name="ScanProgressBar"
+                                           Progress="0"
+                                           ProgressColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"/>
+                                
+                                <Label x:Name="ScanDetailsLabel"
+                                       Text=""
+                                       FontSize="12"
+                                       TextColor="Gray"
+                                       IsVisible="False"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        
                         <!-- Device List -->
                         <CollectionView x:Name="DeviceList" 
                                       HeightRequest="300"
@@ -164,26 +211,58 @@
                 <Frame BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#2B2B2B}" 
                        BorderColor="Transparent"
                        Padding="15">
-                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
-                        <Entry x:Name="IpAddressEntry" 
-                               Placeholder="IP Address (e.g., 192.168.1.100)"
-                               Grid.Column="0"/>
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="📱 Add Device Manually" 
+                               FontSize="16" 
+                               FontAttributes="Bold"/>
                         
-                        <Entry x:Name="PortEntry" 
-                               Placeholder="Port"
-                               Text="80"
-                               Keyboard="Numeric"
-                               WidthRequest="80"
-                               Grid.Column="1"/>
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
+                            <Entry x:Name="IpAddressEntry" 
+                                   Placeholder="IP Address (e.g., 192.168.1.100)"
+                                   Grid.Column="0"/>
+                            
+                            <Entry x:Name="PortEntry" 
+                                   Placeholder="Port"
+                                   Text="80"
+                                   Keyboard="Numeric"
+                                   WidthRequest="80"
+                                   Grid.Column="1"/>
+                            
+                            <Button Text="Add"
+                                    Clicked="OnAddManualDeviceClicked"
+                                    Grid.Column="2"/>
+                            
+                            <Button Text="Connect"
+                                    Clicked="OnConnectManualClicked"
+                                    Grid.Column="3"/>
+                        </Grid>
                         
-                        <Button Text="Add"
-                                Clicked="OnAddManualDeviceClicked"
-                                Grid.Column="2"/>
-                        
-                        <Button Text="Connect"
-                                Clicked="OnConnectManualClicked"
-                                Grid.Column="3"/>
-                    </Grid>
+                        <HorizontalStackLayout Spacing="10" Margin="0,5,0,0">
+                            <Label Text="Quick ports:" FontSize="12" TextColor="Gray" VerticalOptions="Center"/>
+                            <Button Text="80" 
+                                    Clicked="OnQuickPortClicked" 
+                                    WidthRequest="40" 
+                                    HeightRequest="30" 
+                                    FontSize="10"
+                                    BackgroundColor="{AppThemeBinding Light=#E8F5E8, Dark=#2D4A2D}"
+                                    TextColor="{AppThemeBinding Light=#2D7D32, Dark=#81C784}"/>
+                            <Button Text="8080" 
+                                    Clicked="OnQuickPortClicked" 
+                                    WidthRequest="50" 
+                                    HeightRequest="30" 
+                                    FontSize="10"
+                                    BackgroundColor="{AppThemeBinding Light=#E3F2FD, Dark=#1A237E}"
+                                    TextColor="{AppThemeBinding Light=#1976D2, Dark=#64B5F6}"/>
+                            <Button Text="443" 
+                                    Clicked="OnQuickPortClicked" 
+                                    WidthRequest="40" 
+                                    HeightRequest="30" 
+                                    FontSize="10"
+                                    BackgroundColor="{AppThemeBinding Light=#FFF3E0, Dark=#E65100}"
+                                    TextColor="{AppThemeBinding Light=#F57C00, Dark=#FFB74D}"/>
+                            <Label Text="(HTTP recommended for ESP32)" FontSize="10" TextColor="Gray" VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
                 </Frame>
             </VerticalStackLayout>
         </ScrollView>
