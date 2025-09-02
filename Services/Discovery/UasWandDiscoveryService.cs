@@ -555,22 +555,22 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
                     {
                         _logger.LogTrace("🔌 Port {Port} open on {IpAddress}, attempting device discovery", port, ipAddress);
                         
-                        // Only try UAS validation on port 443 - the official UAS device port
+                        // Try UAS validation on port 443 (common UAS port)
                         if (port == 443)
                         {
                             var uasDeviceInfo = await ValidateAndGetUasDeviceInfoAsync(ipAddress, port, cancellationToken);
                             if (uasDeviceInfo != null)
                             {
                                 await AddDiscoveredDeviceAsync(uasDeviceInfo, cancellationToken);
-                                return true; // Found a UAS device
+                                return true; // Found a verified UAS device
                             }
                             
-                            // Port 443 but failed UAS validation - check if it's UAS by hostname
-                            var possibleUasDevice = await CreateGenericDeviceInfoAsync(ipAddress, port);
-                            if (possibleUasDevice != null)
+                            // Port 443 but failed UAS validation - treat as generic device
+                            var genericDevice = await CreateGenericDeviceInfoAsync(ipAddress, port);
+                            if (genericDevice != null)
                             {
-                                await AddDiscoveredDeviceAsync(possibleUasDevice, cancellationToken);
-                                return true; // Found potential UAS device on port 443
+                                await AddDiscoveredDeviceAsync(genericDevice, cancellationToken);
+                                return true; // Found a generic device on port 443
                             }
                         }
                         else
@@ -622,17 +622,8 @@ public class UasWandDiscoveryService : IUasWandDiscoveryService, IDisposable
                 deviceName = $"Device_{ipAddress}";
             }
             
-            // Additional UAS device identification for port 443
-            if (!isUasDevice && port == 443)
-            {
-                _logger.LogDebug("🔍 Port 443 suggests possible UAS device, treating as potential UAS device");
-                // Port 443 devices are considered potential UAS devices even if hostname doesn't match
-                isUasDevice = true;
-            }
-            
-            var deviceType = isUasDevice ? 
-                (deviceName.ToLower().Contains("uas") ? "UAS Device (by hostname)" : "UAS Device (port 443)") : 
-                "Generic Device";
+            // Do NOT assume port 443 means UAS device - only hostname/name matching
+            var deviceType = isUasDevice ? "UAS Device" : "Generic Device";
             var enumType = isUasDevice ? Models.Device.DeviceType.WandV3 : Models.Device.DeviceType.Generic;
             
             _logger.LogInformation("✅ Discovered device: '{DeviceName}' at {IpAddress}:{Port} ({DeviceType})", 

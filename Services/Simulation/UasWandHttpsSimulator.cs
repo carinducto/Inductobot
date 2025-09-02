@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Inductobot.Models.Authentication;
 using Inductobot.Models.Device;
 using Inductobot.Models.Commands;
 using System.Security.Cryptography.X509Certificates;

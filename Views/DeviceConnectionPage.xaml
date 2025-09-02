@@ -11,11 +11,107 @@
         <ScrollView Grid.Row="0" Margin="0,0,0,10">
             <VerticalStackLayout Spacing="20">
                 
-                <!-- Device Discovery Section -->
-                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
-                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                <!-- Connection Mode Selector -->
+                <Frame BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A237E}"
+                       BorderColor="{AppThemeBinding Light=#2196F3, Dark=#64B5F6}"
                        Padding="15">
                     <VerticalStackLayout Spacing="15">
+                        <Label Text="🔗 Connection Mode" 
+                               FontSize="20" 
+                               FontAttributes="Bold"
+                               HorizontalOptions="Center"/>
+                        
+                        <Label x:Name="ModeDescriptionLabel"
+                               Text="Select how you want to connect to UAS-WAND devices"
+                               FontSize="14"
+                               TextColor="Gray"
+                               HorizontalOptions="Center"/>
+                        
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <!-- WiFi/HTTP Mode Button -->
+                            <Border x:Name="WiFiModeBorder"
+                                    Stroke="{AppThemeBinding Light=#2196F3, Dark=#64B5F6}"
+                                    StrokeThickness="2"
+                                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                                    Padding="15">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10"/>
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnWiFiModeSelected"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="📡" FontSize="36" HorizontalOptions="Center"/>
+                                    <Label Text="WiFi/Network" 
+                                           FontSize="16" 
+                                           FontAttributes="Bold"
+                                           HorizontalOptions="Center"/>
+                                    <Label Text="HTTP/HTTPS API"
+                                           FontSize="12"
+                                           TextColor="Gray"
+                                           HorizontalOptions="Center"/>
+                                    <BoxView x:Name="WiFiModeIndicator"
+                                             HeightRequest="3"
+                                             Color="Transparent"
+                                             Margin="0,5,0,0"/>
+                                </VerticalStackLayout>
+                            </Border>
+                            
+                            <!-- USB/COM Mode Button -->
+                            <Border x:Name="UsbModeBorder"
+                                    Stroke="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                                    StrokeThickness="2"
+                                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                                    Padding="15"
+                                    Grid.Column="1">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10"/>
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnUsbModeSelected"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="🔌" FontSize="36" HorizontalOptions="Center"/>
+                                    <Label Text="USB/Serial" 
+                                           FontSize="16" 
+                                           FontAttributes="Bold"
+                                           HorizontalOptions="Center"/>
+                                    <Label Text="COM Port API"
+                                           FontSize="12"
+                                           TextColor="Gray"
+                                           HorizontalOptions="Center"/>
+                                    <BoxView x:Name="UsbModeIndicator"
+                                             HeightRequest="3"
+                                             Color="Transparent"
+                                             Margin="0,5,0,0"/>
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+                        
+                        <!-- Active Mode Status -->
+                        <Frame x:Name="ActiveModeFrame"
+                               BackgroundColor="{AppThemeBinding Light=#E8F5E9, Dark=#1B5E20}"
+                               BorderColor="{AppThemeBinding Light=#4CAF50, Dark=#4CAF50}"
+                               Padding="10"
+                               IsVisible="False">
+                            <Label x:Name="ActiveModeLabel"
+                                   FontSize="14"
+                                   HorizontalOptions="Center"/>
+                        </Frame>
+                    </VerticalStackLayout>
+                </Frame>
+                
+                <!-- WiFi/Network Discovery Section (Visible in WiFi Mode) -->
+                <Frame x:Name="WiFiSection"
+                       BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                       BorderColor="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                       Padding="15"
+                       IsVisible="True">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="📡 WiFi/Network Devices" 
+                               FontSize="18" 
+                               FontAttributes="Bold"/>
+                        
                         <!-- Scan Controls -->
                         <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
                             <Label Text="Discovered Devices" 
@@ -139,7 +235,7 @@
                                             <!-- Action Buttons -->
                                             <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Center">
                                                 <Button Text="Connect" 
-                                                      Clicked="OnConnectDeviceClicked"
+                                                      Clicked="OnConnectAndNavigateToWiFiClicked"
                                                       CommandParameter="{Binding .}"
                                                       WidthRequest="80"
                                                       HeightRequest="35"
@@ -233,7 +329,7 @@
                                     Grid.Column="2"/>
                             
                             <Button Text="Connect"
-                                    Clicked="OnConnectManualClicked"
+                                    Clicked="OnConnectManualAndNavigateToWiFiClicked"
                                     Grid.Column="3"/>
                         </Grid>
                         
@@ -262,6 +358,130 @@
                                     TextColor="{AppThemeBinding Light=#F57C00, Dark=#FFB74D}"/>
                             <Label Text="(HTTP recommended for ESP32)" FontSize="10" TextColor="Gray" VerticalOptions="Center"/>
                         </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- USB/COM Port Configuration Section (Visible in USB Mode) -->
+                <Frame x:Name="UsbSection"
+                       BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}" 
+                       BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                       Padding="15"
+                       IsVisible="False">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="🔌 USB/Serial Devices" 
+                               FontSize="18" 
+                               FontAttributes="Bold"/>
+                        
+                        <!-- Header with scan button -->
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                            <Label Text="COM Port Configuration" 
+                                   FontSize="16" 
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                            
+                            <ActivityIndicator x:Name="ComPortScanIndicator" 
+                                             IsRunning="False"
+                                             WidthRequest="20"
+                                             HeightRequest="20"
+                                             Grid.Column="1"/>
+                            
+                            <Button x:Name="ScanComPortsButton"
+                                    Text="Scan COM Ports"
+                                    Clicked="OnScanComPortsClicked"
+                                    BackgroundColor="#4A90E2"
+                                    TextColor="White"
+                                    Grid.Column="2"/>
+                        </Grid>
+                        
+                        <!-- COM Port Scan Progress -->
+                        <Frame x:Name="ComPortScanProgressFrame" 
+                               BackgroundColor="{AppThemeBinding Light=#F0F8FF, Dark=#1A1A2E}"
+                               BorderColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"
+                               Padding="15"
+                               IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <Label x:Name="ComPortScanStatusLabel" 
+                                           Text="Scanning COM ports..."
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           VerticalOptions="Center"/>
+                                    <Label x:Name="ComPortScanPercentLabel"
+                                           Text="0%"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           HorizontalTextAlignment="End"
+                                           Grid.Column="1"/>
+                                </Grid>
+                                
+                                <ProgressBar x:Name="ComPortScanProgressBar"
+                                           Progress="0"
+                                           ProgressColor="{AppThemeBinding Light=#4A90E2, Dark=#4A90E2}"/>
+                                
+                                <Label x:Name="ComPortScanDetailsLabel"
+                                       Text=""
+                                       FontSize="12"
+                                       TextColor="Gray"
+                                       IsVisible="False"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        
+                        <!-- COM Port List -->
+                        <CollectionView x:Name="ComPortList" 
+                                      HeightRequest="150"
+                                      SelectionMode="Single"
+                                      SelectionChanged="OnComPortSelected">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,2" 
+                                            Padding="10"
+                                            BackgroundColor="{AppThemeBinding Light=White, Dark=#2A2A2A}"
+                                            Stroke="{AppThemeBinding Light=#E0E0E0, Dark=#404040}"
+                                            StrokeThickness="1">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                                            <Label Text="{Binding PortName}" 
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"/>
+                                            
+                                            <Label Text="{Binding Description}" 
+                                                   FontSize="12"
+                                                   TextColor="Gray"
+                                                   VerticalOptions="Center"
+                                                   Grid.Column="1"/>
+                                            
+                                            <Label Grid.Column="2"
+                                                   VerticalOptions="Center">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" 
+                                                               Binding="{Binding IsUasDevice}" 
+                                                               Value="True">
+                                                        <Setter Property="Text" Value="✓ UAS"/>
+                                                        <Setter Property="TextColor" Value="Green"/>
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+                                            
+                                            <Button Text="Connect" 
+                                                    Clicked="OnConnectAndNavigateToComPortClicked"
+                                                    CommandParameter="{Binding .}"
+                                                    FontSize="12"
+                                                    Padding="5"
+                                                    BackgroundColor="#4A90E2"
+                                                    TextColor="White"
+                                                    Grid.Column="3"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                            
+                            <CollectionView.EmptyView>
+                                <Label Text="No COM ports detected. Connect a UAS device via USB and scan again."
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       TextColor="Gray"
+                                       FontSize="12"/>
+                            </CollectionView.EmptyView>
+                        </CollectionView>
                     </VerticalStackLayout>
                 </Frame>
             </VerticalStackLayout>

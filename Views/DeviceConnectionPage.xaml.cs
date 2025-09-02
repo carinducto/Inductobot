@@ -12,19 +12,24 @@ public partial class DeviceConnectionPage : ContentPage
     private readonly IUasWandDiscoveryService _discoveryService;
     private readonly IUasWandDeviceService _deviceService;
     private readonly IUasWandApiService _apiService;
+    private readonly IUasWandComPortService _comPortService;
     private readonly INetworkInfoService _networkInfoService;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private ObservableCollection<UASDeviceInfo> _devices = new();
     private ObservableCollection<UASDeviceInfo> _filteredDevices = new();
+    private ObservableCollection<ComPortInfo> _comPorts = new();
     private bool _showUasOnly = true;
     private CancellationTokenSource? _connectionCts;
     private CancellationTokenSource? _scanCts;
+    private CancellationTokenSource? _comPortScanCts;
+    private ConnectionMode _currentConnectionMode = ConnectionMode.WiFiHttp;
     
     // Constructor for dependency injection
     public DeviceConnectionPage(
         IUasWandDiscoveryService discoveryService,
         IUasWandDeviceService deviceService,
         IUasWandApiService apiService,
+        IUasWandComPortService comPortService,
         INetworkInfoService networkInfoService,
         ILogger<DeviceConnectionPage> logger)
     {
@@ -32,6 +37,7 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService = discoveryService;
         _deviceService = deviceService;
         _apiService = apiService;
+        _comPortService = comPortService;
         _networkInfoService = networkInfoService;
         _logger = logger;
         
@@ -45,6 +51,7 @@ public partial class DeviceConnectionPage : ContentPage
         GetService<IUasWandDiscoveryService>(),
         GetService<IUasWandDeviceService>(),
         GetService<IUasWandApiService>(),
+        GetService<IUasWandComPortService>(),
         GetService<INetworkInfoService>(),
         GetService<ILogger<DeviceConnectionPage>>())
     {
@@ -79,14 +86,24 @@ public partial class DeviceConnectionPage : ContentPage
         
         InitializeUI();
         SubscribeToEvents();
+        InitializeConnectionMode();
         _ = UpdateNetworkInfoAsync();
         
         _logger.LogInformation("DeviceConnectionPage initialization complete. Devices collection count: {Count}", _devices.Count);
+    }
+
+    private void InitializeConnectionMode()
+    {
+        // Initialize with WiFi/HTTP mode by default
+        _currentConnectionMode = ConnectionMode.WiFiHttp;
+        UpdateUIForConnectionMode();
+        _logger.LogInformation("Initialized with connection mode: {Mode}", _currentConnectionMode);
     }
     
     private void InitializeUI()
     {
         DeviceList.ItemsSource = _filteredDevices;
+        ComPortList.ItemsSource = _comPorts;
         UpdateDeviceCount();
     }
     
@@ -99,6 +116,10 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.ScanningStateChanged += OnScanningStateChanged;
         _discoveryService.ScanProgressChanged += OnScanProgressChanged;
         _deviceService.ConnectionStateChanged += OnConnectionStateChanged;
+        _comPortService.ComPortDiscovered += OnComPortDiscovered;
+        _comPortService.ComPortRemoved += OnComPortRemoved;
+        _comPortService.ConnectionStateChanged += OnComPortConnectionStateChanged;
+        _comPortService.ScanProgressChanged += OnComPortScanProgressChanged;
         
         _logger.LogInformation("Event subscriptions complete");
         _logger.LogInformation("DeviceDiscovered event subscriber count: {Count}", _discoveryService.GetDeviceDiscoveredSubscriberCount());
@@ -262,6 +283,10 @@ public partial class DeviceConnectionPage : ContentPage
         _discoveryService.ScanningStateChanged -= OnScanningStateChanged;
         _discoveryService.ScanProgressChanged -= OnScanProgressChanged;
         _deviceService.ConnectionStateChanged -= OnConnectionStateChanged;
+        _comPortService.ComPortDiscovered -= OnComPortDiscovered;
+        _comPortService.ComPortRemoved -= OnComPortRemoved;
+        _comPortService.ConnectionStateChanged -= OnComPortConnectionStateChanged;
+        _comPortService.ScanProgressChanged -= OnComPortScanProgressChanged;
         
         // Dispose cancellation tokens
         _connectionCts?.Dispose();
@@ -1152,15 +1177,14 @@ public partial class DeviceConnectionPage : ContentPage
     
     private static bool IsUasDevice(UASDeviceInfo device)
     {
-        // Check if device is UAS or simulated UAS
-        var deviceType = device.DeviceType?.ToLower() ?? "";
+        // Only consider a device as UAS if its name contains "UAS" (case insensitive)
+        // Do NOT use port number or device type to determine if it's a UAS device
         var deviceName = device.Name?.ToLower() ?? "";
         
-        var isUas = deviceType.Contains("uas") || 
-                   deviceName.Contains("uas") || 
-                   deviceName.Contains("simulator");
+        // Check for UAS in the device name or if it's a simulator
+        var isUas = deviceName.Contains("uas") || deviceName.Contains("simulator");
                    
-        System.Diagnostics.Debug.WriteLine($"IsUasDevice: '{device.Name}' (type: '{device.DeviceType}') -> {isUas}");
+        System.Diagnostics.Debug.WriteLine($"IsUasDevice: '{device.Name}' -> {isUas}");
         
         return isUas;
     }
@@ -1459,6 +1483,574 @@ public partial class DeviceConnectionPage : ContentPage
             ToastType.Info => ThemeColors.Info,
             _ => ThemeColors.SecondaryText
         };
+    }
+
+    #endregion
+
+    #region Connection Mode Management
+
+    private async void OnWiFiModeSelected(object sender, TappedEventArgs e)
+    {
+        if (_currentConnectionMode == ConnectionMode.WiFiHttp)
+            return;
+
+        await SwitchToConnectionModeAsync(ConnectionMode.WiFiHttp);
+    }
+
+    private async void OnUsbModeSelected(object sender, TappedEventArgs e)
+    {
+        if (_currentConnectionMode == ConnectionMode.UsbComPort)
+            return;
+
+        await SwitchToConnectionModeAsync(ConnectionMode.UsbComPort);
+    }
+
+    private async Task SwitchToConnectionModeAsync(ConnectionMode newMode)
+    {
+        try
+        {
+            _logger.LogInformation("Switching connection mode from {CurrentMode} to {NewMode}", 
+                _currentConnectionMode, newMode);
+
+            // Disconnect any existing connections before switching modes
+            if (_currentConnectionMode != ConnectionMode.None)
+            {
+                if (_currentConnectionMode == ConnectionMode.WiFiHttp && _deviceService.IsConnected)
+                {
+                    await _deviceService.DisconnectAsync();
+                }
+                else if (_currentConnectionMode == ConnectionMode.UsbComPort && _comPortService.IsConnected)
+                {
+                    await _comPortService.DisconnectAsync();
+                }
+            }
+
+            // Cancel any ongoing operations
+            _scanCts?.Cancel();
+            _comPortScanCts?.Cancel();
+
+            _currentConnectionMode = newMode;
+            UpdateUIForConnectionMode();
+
+            _logger.LogInformation("Successfully switched to connection mode: {Mode}", newMode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to switch connection mode to {Mode}", newMode);
+            ShowStatusToast("Failed to switch connection mode", ToastType.Error);
+        }
+    }
+
+    private void UpdateUIForConnectionMode()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            switch (_currentConnectionMode)
+            {
+                case ConnectionMode.WiFiHttp:
+                    // Update mode selector UI
+                    WiFiModeBorder.Stroke = Color.FromArgb("#2196F3");
+                    WiFiModeIndicator.Color = Color.FromArgb("#2196F3");
+                    UsbModeBorder.Stroke = Color.FromArgb("#E0E0E0");
+                    UsbModeIndicator.Color = Colors.Transparent;
+
+                    // Update sections visibility
+                    WiFiSection.IsVisible = true;
+                    UsbSection.IsVisible = false;
+
+                    // Update status and description
+                    ActiveModeFrame.IsVisible = true;
+                    ActiveModeLabel.Text = "📡 WiFi/Network Mode Active - HTTP/HTTPS API";
+                    ModeDescriptionLabel.Text = "Connected devices will use network communication";
+                    break;
+
+                case ConnectionMode.UsbComPort:
+                    // Update mode selector UI
+                    UsbModeBorder.Stroke = Color.FromArgb("#2196F3");
+                    UsbModeIndicator.Color = Color.FromArgb("#2196F3");
+                    WiFiModeBorder.Stroke = Color.FromArgb("#E0E0E0");
+                    WiFiModeIndicator.Color = Colors.Transparent;
+
+                    // Update sections visibility
+                    WiFiSection.IsVisible = false;
+                    UsbSection.IsVisible = true;
+
+                    // Update status and description
+                    ActiveModeFrame.IsVisible = true;
+                    ActiveModeLabel.Text = "🔌 USB/Serial Mode Active - COM Port API";
+                    ModeDescriptionLabel.Text = "Connected devices will use USB serial communication";
+                    break;
+
+                case ConnectionMode.None:
+                default:
+                    // Reset UI to neutral state
+                    WiFiModeBorder.Stroke = Color.FromArgb("#E0E0E0");
+                    WiFiModeIndicator.Color = Colors.Transparent;
+                    UsbModeBorder.Stroke = Color.FromArgb("#E0E0E0");
+                    UsbModeIndicator.Color = Colors.Transparent;
+
+                    WiFiSection.IsVisible = false;
+                    UsbSection.IsVisible = false;
+
+                    ActiveModeFrame.IsVisible = false;
+                    ModeDescriptionLabel.Text = "Select how you want to connect to UAS-WAND devices";
+                    break;
+            }
+
+            _logger.LogDebug("UI updated for connection mode: {Mode}", _currentConnectionMode);
+        });
+    }
+
+    #endregion
+
+    #region Navigation Functions
+
+    private async void OnConnectAndNavigateToWiFiClicked(object sender, EventArgs e)
+    {
+        if (sender is Button button && button.CommandParameter is UASDeviceInfo device)
+        {
+            try
+            {
+                _logger.LogInformation("Connecting to WiFi device and navigating to control page: {DeviceName}", device.Name);
+                
+                button.IsEnabled = false;
+                button.Text = "Connecting...";
+                
+                var success = await _deviceService.ConnectToDeviceAsync(device.IpAddress, device.Port);
+                
+                if (success)
+                {
+                    _logger.LogInformation("Successfully connected to WiFi device, navigating to control page");
+                    await Shell.Current.GoToAsync("wifi-control");
+                }
+                else
+                {
+                    ShowStatusToast("Failed to connect to device", ToastType.Error);
+                    _logger.LogWarning("Failed to connect to WiFi device {DeviceName}", device.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error connecting to WiFi device");
+                ShowStatusToast("Connection error", ToastType.Error);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                button.Text = "Connect";
+            }
+        }
+    }
+
+    private async void OnConnectManualAndNavigateToWiFiClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            var ipAddress = IpAddressEntry?.Text?.Trim();
+            var portText = PortEntry?.Text?.Trim();
+            
+            if (string.IsNullOrEmpty(ipAddress) || string.IsNullOrEmpty(portText))
+            {
+                ShowStatusToast("Please enter IP address and port", ToastType.Warning);
+                return;
+            }
+            
+            if (!int.TryParse(portText, out var port) || port <= 0 || port > 65535)
+            {
+                ShowStatusToast("Please enter a valid port number", ToastType.Warning);
+                return;
+            }
+            
+            _logger.LogInformation("Manually connecting to WiFi device and navigating: {IP}:{Port}", ipAddress, port);
+            
+            var button = sender as Button;
+            if (button != null)
+            {
+                button.IsEnabled = false;
+                button.Text = "Connecting...";
+            }
+            
+            var success = await _deviceService.ConnectToDeviceAsync(ipAddress, port);
+            
+            if (success)
+            {
+                _logger.LogInformation("Successfully connected to manual WiFi device, navigating to control page");
+                await Shell.Current.GoToAsync("wifi-control");
+            }
+            else
+            {
+                ShowStatusToast($"Failed to connect to {ipAddress}:{port}", ToastType.Error);
+                _logger.LogWarning("Failed to connect to manual WiFi device {IP}:{Port}", ipAddress, port);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error with manual WiFi connection");
+            ShowStatusToast("Manual connection error", ToastType.Error);
+        }
+        finally
+        {
+            if (sender is Button button)
+            {
+                button.IsEnabled = true;
+                button.Text = "Connect";
+            }
+        }
+    }
+
+    private async void OnConnectAndNavigateToComPortClicked(object sender, EventArgs e)
+    {
+        if (sender is Button button && button.CommandParameter is ComPortInfo port)
+        {
+            try
+            {
+                _logger.LogInformation("Connecting to COM port and navigating to control page: {PortName}", port.PortName);
+                
+                button.IsEnabled = false;
+                button.Text = "Connecting...";
+                
+                var success = await _comPortService.ConnectAsync(port.PortName);
+                
+                if (success)
+                {
+                    _logger.LogInformation("Successfully connected to COM port, navigating to control page");
+                    await Shell.Current.GoToAsync("comport-control");
+                }
+                else
+                {
+                    ShowStatusToast($"Failed to connect to {port.PortName}", ToastType.Error);
+                    _logger.LogWarning("Failed to connect to COM port {PortName}", port.PortName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error connecting to COM port");
+                ShowStatusToast("COM port connection error", ToastType.Error);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                button.Text = "Connect";
+            }
+        }
+    }
+
+    #endregion
+
+    #region COM Port Functions
+
+    private async void OnScanComPortsClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            ComPortScanIndicator.IsRunning = true;
+            ScanComPortsButton.IsEnabled = false;
+            ComPortScanProgressFrame.IsVisible = true;
+            
+            _comPortScanCts?.Cancel();
+            _comPortScanCts = new CancellationTokenSource();
+            
+            _logger.LogInformation("Scanning for COM ports...");
+            ShowStatusToast("Scanning for COM ports...", ToastType.Info);
+            
+            var ports = await _comPortService.ScanForUasComPortsAsync(_comPortScanCts.Token);
+            
+            _comPorts.Clear();
+            foreach (var port in ports)
+            {
+                _comPorts.Add(port);
+            }
+            
+            var uasPortCount = ports.Count(p => p.IsUasDevice);
+            ShowStatusToast($"Found {ports.Count} COM ports ({uasPortCount} UAS devices)", ToastType.Success);
+            _logger.LogInformation("COM port scan complete: {TotalPorts} ports, {UasPorts} UAS devices", 
+                ports.Count, uasPortCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scanning COM ports");
+            ShowStatusToast("Failed to scan COM ports", ToastType.Error);
+        }
+        finally
+        {
+            ComPortScanIndicator.IsRunning = false;
+            ScanComPortsButton.IsEnabled = true;
+            
+            // Hide progress frame after a short delay to let user see completion
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000); // Show completion for 2 seconds
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    ComPortScanProgressFrame.IsVisible = false;
+                });
+            });
+        }
+    }
+    
+    private async void OnComPortSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.CurrentSelection.FirstOrDefault() is ComPortInfo port)
+        {
+            _logger.LogDebug("COM port selected: {PortName}", port.PortName);
+        }
+    }
+    
+    private async void OnConnectComPortClicked(object sender, EventArgs e)
+    {
+        if (sender is Button button && button.CommandParameter is ComPortInfo port)
+        {
+            try
+            {
+                button.IsEnabled = false;
+                _logger.LogInformation("Connecting to COM port {PortName}...", port.PortName);
+                ShowStatusToast($"Connecting to {port.PortName}...", ToastType.Info);
+                
+                var success = await _comPortService.ConnectAsync(port.PortName);
+                
+                if (success)
+                {
+                    ShowStatusToast($"Connected to {port.PortName}", ToastType.Success);
+                    _logger.LogInformation("Successfully connected to COM port {PortName}", port.PortName);
+                }
+                else
+                {
+                    ShowStatusToast($"Failed to connect to {port.PortName}", ToastType.Error);
+                    _logger.LogWarning("Failed to connect to COM port {PortName}", port.PortName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error connecting to COM port");
+                ShowStatusToast("Connection error", ToastType.Error);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+            }
+        }
+    }
+    
+    private async void OnDisconnectComPortClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            await _comPortService.DisconnectAsync();
+            // ComPortStatusFrame.IsVisible = false; // Moved to dedicated COM port control page
+            ShowStatusToast("Disconnected from COM port", ToastType.Info);
+            _logger.LogInformation("Disconnected from COM port");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error disconnecting COM port");
+            ShowStatusToast("Disconnection error", ToastType.Error);
+        }
+    }
+    
+    private async void OnReadConfigClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            // ReadConfigButton.IsEnabled = false; // Moved to dedicated COM port control page
+            ShowStatusToast("Reading device configuration...", ToastType.Info);
+            
+            var config = await _comPortService.ReadConfigurationAsync();
+            
+            if (config != null)
+            {
+                var message = $"Device: {config.DeviceName ?? "Unknown"}\n" +
+                             $"Mode: {config.Mode}\n" +
+                             $"Sampling Rate: {config.SamplingRate} Hz\n" +
+                             $"Gain: {config.Gain}";
+                
+                await DisplayAlert("Device Configuration", message, "OK");
+                _logger.LogInformation("Successfully read device configuration");
+            }
+            else
+            {
+                ShowStatusToast("Failed to read configuration", ToastType.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading configuration");
+            ShowStatusToast("Read error", ToastType.Error);
+        }
+        finally
+        {
+            // ReadConfigButton.IsEnabled = true; // Moved to dedicated COM port control page
+        }
+    }
+    
+    private async void OnWriteConfigClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            // For now, show a simple dialog - later can expand to full configuration UI
+            var result = await DisplayAlert("Write Configuration", 
+                "This will write a test configuration to the device. Continue?", "Yes", "No");
+            
+            if (result)
+            {
+                // WriteConfigButton.IsEnabled = false; // Moved to dedicated COM port control page
+                ShowStatusToast("Writing configuration...", ToastType.Info);
+                
+                var config = new DeviceConfiguration
+                {
+                    DeviceName = "UAS-WAND-001",
+                    SamplingRate = 1000,
+                    Mode = MeasurementMode.Continuous,
+                    Gain = 1
+                };
+                
+                var success = await _comPortService.ConfigureDeviceAsync(config);
+                
+                if (success)
+                {
+                    ShowStatusToast("Configuration written successfully", ToastType.Success);
+                    _logger.LogInformation("Successfully wrote device configuration");
+                }
+                else
+                {
+                    ShowStatusToast("Failed to write configuration", ToastType.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error writing configuration");
+            ShowStatusToast("Write error", ToastType.Error);
+        }
+        finally
+        {
+            // WriteConfigButton.IsEnabled = true; // Moved to dedicated COM port control page
+        }
+    }
+    
+    private async void OnSendCommandClicked(object sender, EventArgs e)
+    {
+        try
+        {
+            var command = await DisplayPromptAsync("Send Command", 
+                "Enter command to send:", "ID", keyboard: Keyboard.Text);
+            
+            if (!string.IsNullOrEmpty(command))
+            {
+                // SendCommandButton.IsEnabled = false; // Moved to dedicated COM port control page
+                ShowStatusToast($"Sending: {command}", ToastType.Info);
+                
+                var response = await _comPortService.SendCommandAsync(command);
+                
+                if (!string.IsNullOrEmpty(response))
+                {
+                    await DisplayAlert("Command Response", response, "OK");
+                    _logger.LogInformation("Command sent successfully. Response: {Response}", response);
+                }
+                else
+                {
+                    ShowStatusToast("No response received", ToastType.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending command");
+            ShowStatusToast("Command error", ToastType.Error);
+        }
+        finally
+        {
+            // SendCommandButton.IsEnabled = true; // Moved to dedicated COM port control page
+        }
+    }
+    
+    private void OnComPortDiscovered(object? sender, ComPortInfo port)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!_comPorts.Any(p => p.PortName == port.PortName))
+            {
+                _comPorts.Add(port);
+                _logger.LogInformation("COM port discovered: {PortName}", port.PortName);
+            }
+        });
+    }
+    
+    private void OnComPortRemoved(object? sender, ComPortInfo port)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var existingPort = _comPorts.FirstOrDefault(p => p.PortName == port.PortName);
+            if (existingPort != null)
+            {
+                _comPorts.Remove(existingPort);
+                _logger.LogInformation("COM port removed: {PortName}", port.PortName);
+            }
+        });
+    }
+    
+    private void OnComPortConnectionStateChanged(object? sender, bool isConnected)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            // COM port connection state changes are now handled by the dedicated COM port control page
+            if (isConnected && _comPortService.ConnectedPort != null)
+            {
+                _logger.LogInformation("COM port connected: {PortName}", _comPortService.ConnectedPort.PortName);
+            }
+        });
+    }
+    
+    private void OnComPortScanProgressChanged(object? sender, (int current, int total, string status) progress)
+    {
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
+                    var (current, total, status) = progress;
+                    
+                    // Update progress bar and percentage
+                    if (total > 0)
+                    {
+                        var percentage = (double)current / total * 100;
+                        ComPortScanProgressBar.Progress = percentage / 100.0;
+                        ComPortScanPercentLabel.Text = $"{percentage:F0}%";
+                    }
+                    else
+                    {
+                        ComPortScanProgressBar.Progress = 0;
+                        ComPortScanPercentLabel.Text = "0%";
+                    }
+                    
+                    // Update status text
+                    ComPortScanStatusLabel.Text = status;
+                    
+                    // Show details
+                    if (total > 0)
+                    {
+                        ComPortScanDetailsLabel.Text = $"Ports scanned: {current}/{total}";
+                        ComPortScanDetailsLabel.IsVisible = true;
+                    }
+                    else
+                    {
+                        ComPortScanDetailsLabel.IsVisible = false;
+                    }
+                    
+                    // Show/hide progress frame based on scan state
+                    var isScanning = current < total && total > 0;
+                    ComPortScanProgressFrame.IsVisible = isScanning || current == total;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating COM port scan progress UI");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in OnComPortScanProgressChanged event handler");
+        }
     }
 
     #endregion

@@ -1,0 +1,1115 @@
+{
+  "https_api_specification": {
+    "document": "INDU0275-UAS-HTTPS-API-Rev8",
+    "version": "Rev 8",
+    "date": "April 28, 2025",
+    "description": "Inductosense UAS UWM HTTPS API Command Database",
+    "protocol": {
+      "transport": "HTTPS over WiFi",
+      "base_url": "https://[device_ip]",
+      "default_ports": [80, 443, 8080, 8443, 5000, 5001, 7000, 7001],
+      "authentication": "HTTP Basic Authentication",
+      "content_type": "application/json or application/octet-stream",
+      "authorization": {
+        "username": "user from device users list",
+        "password": "PIN code as string"
+      }
+    },
+    "security_levels": {
+      "0": "No additional authentication required",
+      "1": "Level 1 authentication required via challenge/response"
+    },
+    "response_codes": {
+      "http_status": {
+        "200": "OK - Request successful",
+        "400": "Bad Request - Malformed data or UWM processing failure",
+        "401": "Unauthorized - Authentication failed",
+        "403": "Forbidden - Insufficient security level",
+        "404": "Not Found - Invalid URL or request type",
+        "500": "Internal Server Error - UWM Wi-Fi module fault"
+      },
+      "api_response": {
+        "0": "Success",
+        "1": "Error condition (see message field)",
+        "2": "Specific error (scan start failure, etc.)"
+      }
+    },
+    "commands": {
+      "scan_control": {
+        "start_scan": {
+          "method": "POST",
+          "url": "/scan",
+          "security_level": 1,
+          "description": "Start continuous scanning operation on UAS-WAND device",
+          "function": "Initiates continuous measurement scanning that runs until explicitly stopped. Device collects measurement data continuously and makes it available via live reading endpoints.",
+          "request": {
+            "content_type": "application/json",
+            "headers": {
+              "Authorization": "Basic [base64(username:password)]",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "scan": {
+                "type": "integer",
+                "value": 1,
+                "description": "Scan operation type",
+                "validation": {
+                  "required": true,
+                  "allowed_values": [0, 1, 2],
+                  "value_meanings": {
+                    "0": "Stop scan",
+                    "1": "Start continuous scan",
+                    "2": "One-shot scan"
+                  }
+                }
+              }
+            },
+            "body_validation": {
+              "required_fields": ["scan"],
+              "malformed_handling": "Returns 400 Bad Request if JSON invalid or scan field missing"
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "http_status_codes": [200, 400, 401, 403, 500],
+            "success": {
+              "http_status": 200,
+              "body": {
+                "responseCode": {
+                  "type": "integer",
+                  "value": 0,
+                  "meaning": "Success"
+                },
+                "message": {
+                  "type": "string",
+                  "value": "OK",
+                  "meaning": "Scan started successfully"
+                }
+              }
+            },
+            "errors": {
+              "scan_already_active": {
+                "http_status": 200,
+                "responseCode": 1,
+                "message": "Scan already in progress",
+                "description": "Cannot start new scan while another is running",
+                "resolution": "Stop current scan first or wait for completion"
+              },
+              "scan_start_failed": {
+                "http_status": 200,
+                "responseCode": 2,
+                "message": "Failed to start scan",
+                "description": "Scan could not start due to hardware/configuration issues",
+                "resolution": "Check device status and scan error endpoint"
+              },
+              "bad_request": {
+                "http_status": 400,
+                "description": "Invalid JSON or missing scan parameter"
+              },
+              "unauthorized": {
+                "http_status": 401,
+                "description": "Invalid credentials"
+              },
+              "forbidden": {
+                "http_status": 403,
+                "description": "Insufficient authentication level (Level 1 required)"
+              }
+            }
+          },
+          "prerequisites": [
+            "Level 1 authentication required",
+            "Device must be ready (not in error state)",
+            "Valid sensor cartridge installed",
+            "No other scan currently active"
+          ],
+          "side_effects": [
+            "Device enters continuous scanning mode",
+            "Live reading data becomes available",
+            "Device power consumption increases",
+            "Other measurement commands may be blocked"
+          ],
+          "timing": {
+            "operation_type": "asynchronous",
+            "response_time": "<500ms for command acknowledgment",
+            "scan_duration": "Continues until stopped",
+            "verification": "Use GET /scan to confirm scan started"
+          },
+          "usage_example": {
+            "description": "Start continuous scanning",
+            "curl_command": "curl -X POST https://device-ip/scan -H 'Authorization: Basic dXNlcjpwaW4=' -H 'Content-Type: application/json' -d '{\"scan\": 1}'",
+            "request_body": "{\"scan\": 1}",
+            "success_response": "{\"responseCode\": 0, \"message\": \"OK\"}",
+            "error_response": "{\"responseCode\": 1, \"message\": \"Scan already in progress\"}"
+          }
+        },
+        "stop_scan": {
+          "method": "POST",
+          "url": "/scan",
+          "security_level": 1,
+          "description": "Stop continuous scanning on UWM",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "scan": 0
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            },
+            "errors": {
+              "responseCode_1": {
+                "responseCode": 1,
+                "message": "No scan in progress"
+              }
+            }
+          }
+        },
+        "oneshot_scan": {
+          "method": "POST",
+          "url": "/scan",
+          "security_level": 1,
+          "description": "Perform single scan measurement",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "scan": 2
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            },
+            "errors": {
+              "responseCode_1": {
+                "responseCode": 1,
+                "message": "Scan already in progress"
+              }
+            }
+          }
+        },
+        "get_scan_status": {
+          "method": "GET",
+          "url": "/scan",
+          "security_level": 1,
+          "description": "Get current scanning status",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": {
+              "scan": "integer"
+            },
+            "values": {
+              "0": "Scan not in progress",
+              "1": "Scan in progress"
+            }
+          }
+        },
+        "get_scan_error": {
+          "method": "GET",
+          "url": "/scanerror",
+          "security_level": 1,
+          "description": "Get error condition of last scan attempt",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "error_codes": {
+              "0": "No error",
+              "1": "Subscription lapsed",
+              "2": "Too many readings",
+              "3": "Cartridge not detected",
+              "4": "Invalid/no cartridge detected",
+              "5": "Invalid sensor configuration",
+              "6": "Failed to read error codes"
+            }
+          }
+        }
+      },
+      "measurement_data": {
+        "get_live_reading": {
+          "method": "GET",
+          "url": "/live",
+          "security_level": 1,
+          "description": "Retrieve real-time measurement data during active scanning operation",
+          "function": "Returns the most recent live measurement data structure containing sensor readings, metadata, and waveform data. Supports partial data retrieval for bandwidth optimization.",
+          "request": {
+            "headers": {
+              "Authorization": "Basic [base64(username:password)]"
+            },
+            "query_parameters": {
+              "startIndex": {
+                "type": "integer",
+                "description": "Zero-based starting index for data points",
+                "validation": {
+                  "min": 0,
+                  "max": 9999,
+                  "default": 0,
+                  "optional": true
+                }
+              },
+              "numPoints": {
+                "type": "integer",
+                "description": "Number of data points to return starting from startIndex",
+                "validation": {
+                  "min": 0,
+                  "max": 10000,
+                  "default": 10000,
+                  "optional": true,
+                  "special_values": {
+                    "0": "Returns header only, no measurement data"
+                  }
+                }
+              }
+            },
+            "parameter_validation": {
+              "both_required": "If one query parameter is present, both must be valid",
+              "bounds_checking": "startIndex + numPoints must not exceed 10000",
+              "error_handling": "Invalid parameters return 400 Bad Request"
+            }
+          },
+          "response": {
+            "content_type": "application/octet-stream",
+            "http_status_codes": [200, 400, 401, 403, 500],
+            "success": {
+              "http_status": 200,
+              "format": "Binary data structure (little-endian)",
+              "structure": {
+                "StructureVersion": {
+                  "type": "uint16",
+                  "offset": 0,
+                  "description": "Data structure version number for compatibility"
+                },
+                "HeaderLength": {
+                  "type": "uint16",
+                  "offset": 2,
+                  "description": "Length of header portion in bytes"
+                },
+                "MeasurementYear": {
+                  "type": "uint16",
+                  "offset": 4,
+                  "description": "Year of measurement (e.g., 2025)"
+                },
+                "MeasurementMonth": {
+                  "type": "byte",
+                  "offset": 6,
+                  "description": "Month (1-12)",
+                  "validation": {"range": "1-12"}
+                },
+                "MeasurementDay": {
+                  "type": "byte",
+                  "offset": 7,
+                  "description": "Day of month (1-31)",
+                  "validation": {"range": "1-31"}
+                },
+                "MeasurementHours": {
+                  "type": "uint16",
+                  "offset": 8,
+                  "description": "Hour (0-23)",
+                  "validation": {"range": "0-23"}
+                },
+                "MeasurementMins": {
+                  "type": "byte",
+                  "offset": 10,
+                  "description": "Minutes (0-59)",
+                  "validation": {"range": "0-59"}
+                },
+                "MeasurementSecs": {
+                  "type": "byte",
+                  "offset": 11,
+                  "description": "Seconds (0-59)",
+                  "validation": {"range": "0-59"}
+                },
+                "SensorId": {
+                  "type": "byte[12]",
+                  "offset": 12,
+                  "description": "Unique sensor identifier string",
+                  "format": "ASCII string, null-terminated"
+                },
+                "SampleInterval": {
+                  "type": "float32",
+                  "offset": 24,
+                  "description": "Time interval between samples in seconds",
+                  "units": "seconds"
+                },
+                "MaterialIndex": {
+                  "type": "uint16",
+                  "offset": 28,
+                  "description": "Index of material being measured"
+                },
+                "CartridgeIndex": {
+                  "type": "uint16",
+                  "offset": 30,
+                  "description": "Index of sensor cartridge in use"
+                },
+                "Velocity": {
+                  "type": "float32",
+                  "offset": 32,
+                  "description": "Sound velocity in material",
+                  "units": "m/s"
+                },
+                "SNR": {
+                  "type": "float32",
+                  "offset": 36,
+                  "description": "Signal-to-noise ratio",
+                  "units": "dB"
+                },
+                "SystemDelayTime": {
+                  "type": "float32",
+                  "offset": 40,
+                  "description": "System delay compensation",
+                  "units": "seconds"
+                },
+                "Temperature": {
+                  "type": "float32",
+                  "offset": 44,
+                  "description": "Measurement temperature",
+                  "units": "Celsius"
+                },
+                "Thickness": {
+                  "type": "float32",
+                  "offset": 48,
+                  "description": "Measured material thickness",
+                  "units": "mm"
+                },
+                "Data": {
+                  "type": "float32[variable]",
+                  "offset": 52,
+                  "description": "Measurement waveform data points",
+                  "size": "Depends on query parameters (default 10000 points)",
+                  "total_bytes": "40000 bytes for full data set"
+                }
+              },
+              "total_size": {
+                "header_only": "52 bytes",
+                "full_data": "40052 bytes",
+                "variable": "52 + (numPoints * 4) bytes"
+              }
+            },
+            "errors": {
+              "no_scan_active": {
+                "http_status": 400,
+                "description": "No scan currently in progress"
+              },
+              "invalid_parameters": {
+                "http_status": 400,
+                "description": "Query parameters out of bounds or malformed"
+              }
+            }
+          },
+          "prerequisites": [
+            "Level 1 authentication required",
+            "Active scan must be in progress (check with GET /scan)",
+            "Device must be collecting live data"
+          ],
+          "side_effects": ["None - read-only operation"],
+          "timing": {
+            "response_time": "<1000ms for full data, <200ms for header only",
+            "data_freshness": "Most recent measurement data available",
+            "bandwidth": "40KB for full response, 52 bytes for header only"
+          },
+          "usage_examples": {
+            "full_data": {
+              "description": "Get complete live measurement",
+              "curl_command": "curl -X GET 'https://device-ip/live' -H 'Authorization: Basic dXNlcjpwaW4='",
+              "response_size": "40052 bytes binary data"
+            },
+            "header_only": {
+              "description": "Get measurement metadata only",
+              "curl_command": "curl -X GET 'https://device-ip/live?startIndex=0&numPoints=0' -H 'Authorization: Basic dXNlcjpwaW4='",
+              "response_size": "52 bytes binary data"
+            },
+            "partial_data": {
+              "description": "Get 100 data points starting from index 1000",
+              "curl_command": "curl -X GET 'https://device-ip/live?startIndex=1000&numPoints=100' -H 'Authorization: Basic dXNlcjpwaW4='",
+              "response_size": "452 bytes (52 header + 400 data)"
+            }
+          }
+        },
+        "get_live_xy_trace": {
+          "method": "GET",
+          "url": "/trace",
+          "security_level": 1,
+          "description": "Get live trace XY coordinates for A-Scan curve",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/octet-stream",
+            "format": "binary data structure",
+            "structure": {
+              "StructureVersion": "uint16",
+              "HeaderLength": "uint16",
+              "MeasurementYear": "uint16",
+              "MeasurementMonth": "byte",
+              "MeasurementDay": "byte",
+              "MeasurementHours": "uint16",
+              "MeasurementMins": "byte",
+              "MeasurementSecs": "byte",
+              "SensorId": "byte[12]",
+              "SampleInterval": "float32",
+              "MaterialIndex": "uint16",
+              "CartridgeIndex": "uint16",
+              "Velocity": "float32",
+              "SNR": "float32",
+              "SystemDelayTime": "float32",
+              "Temperature": "float32",
+              "Thickness": "float32",
+              "LiveTraceX": "uint16[100]",
+              "LiveTraceY": "uint16[100]"
+            }
+          },
+          "notes": "Optimized for bandwidth-restricted environments"
+        },
+        "get_measurement": {
+          "method": "GET",
+          "url": "/measurement",
+          "security_level": 1,
+          "description": "Get completed measurement data (Schema 7)",
+          "request": {
+            "query_parameters": {
+              "header": "integer (1 = header only, optional)"
+            }
+          },
+          "response": {
+            "content_type": "application/octet-stream",
+            "format": "Schema 7 Rev 1 binary structure",
+            "structure": {
+              "SchemaVersion": "uint16",
+              "HeaderLength": "uint16",
+              "MeasurementYear": "uint16",
+              "MeasurementMonth": "byte",
+              "MeasurementDay": "byte",
+              "MeasurementHour": "uint16",
+              "MeasurementMins": "byte",
+              "MeasurementSecs": "byte",
+              "SensorId": "byte[12]",
+              "SampleInterval": "float32",
+              "MaterialIndex": "uint16",
+              "CartridgeIndex": "uint16",
+              "Velocity": "float32",
+              "CartridgeSerial": "uint32",
+              "SystemDelayTime": "float32",
+              "Temperature": "float32",
+              "Thickness": "float32",
+              "UserGUID": "char[16]",
+              "SubscriptionGUID": "char[16]",
+              "Reserved": "byte[48]",
+              "SerialNumber": "uint16",
+              "FirmwareVersion": "uint16",
+              "MinimumThickness": "float32",
+              "AverageCount": "uint16",
+              "TxCoilIndex": "byte",
+              "RxCoilIndex": "byte",
+              "Data": "float32[10000]"
+            }
+          },
+          "notes": "Only available when scan is not in progress"
+        }
+      },
+      "device_control": {
+        "sleep": {
+          "method": "POST",
+          "url": "/sleep",
+          "security_level": 1,
+          "description": "Put ESP32 module into deep sleep mode",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            }
+          },
+          "notes": "Device cannot recover without power cycle. For integrated mode."
+        },
+        "keep_alive": {
+          "method": "GET",
+          "url": "/ping",
+          "security_level": 0,
+          "description": "Maintain security level and connection",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0
+            }
+          },
+          "notes": "Always successful, no error messages"
+        },
+        "get_information": {
+          "method": "GET",
+          "url": "/info",
+          "security_level": 0,
+          "description": "Get device firmware and hardware information",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": {
+              "uwm_fw": "string (Major.Minor)",
+              "hdc_fw": "string (Major.Minor)",
+              "hdc_serial": "string (5 characters)",
+              "temperature": "int32 (Celsius)"
+            }
+          }
+        },
+        "get_statistics": {
+          "method": "GET",
+          "url": "/stats",
+          "security_level": 0,
+          "description": "Get debugging statistics (packets, etc.)",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": "variable (debugging data)"
+          },
+          "notes": "Content not strictly defined - for debugging only"
+        },
+        "get_error": {
+          "method": "GET",
+          "url": "/error",
+          "security_level": 0,
+          "description": "Get system error bitfields",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": {
+              "responseCode": 0,
+              "errorCodes": "array of 4 uint32 values"
+            },
+            "error_sections": {
+              "index_0": "Wi-Fi errors",
+              "index_1": "HTTPS server errors", 
+              "index_2": "Serial errors",
+              "index_3": "Generic errors"
+            },
+            "wifi_errors": {
+              "0x00000001": "Failed to start",
+              "0x00000002": "Invalid configuration",
+              "0x00000004": "Invalid certificates",
+              "0x00000008": "Invalid MAC address",
+              "0x00000010": "Unable to respond",
+              "0x00000020": "Failed to set mode (AP)",
+              "0x00000040": "Failed to set protocol (LR/Normal)"
+            },
+            "https_errors": {
+              "0x00000001": "Error loading certificates",
+              "0x00000002": "Error storing certificates",
+              "0x00000004": "Error registering API uris",
+              "0x00000008": "Error starting or stopping",
+              "0x00000010": "Error loading keys",
+              "0x00000020": "Failed to register API handlers"
+            },
+            "serial_errors": {
+              "0x00000001": "Timeout",
+              "0x00000002": "Parser failure",
+              "0x00000004": "Handler failure",
+              "0x00000008": "Response failure",
+              "0x00000010": "Unable to read length",
+              "0x00000020": "Unable to initialise serial port"
+            },
+            "general_errors": {
+              "0x00000001": "Partition validation error",
+              "0x00000002": "Flash storage error",
+              "0x00000004": "Network interface error",
+              "0x00000008": "Internal event loop failure",
+              "0x00000010": "Failed to read MAC address",
+              "0x00000020": "Not provisioned"
+            }
+          }
+        }
+      },
+      "wifi_management": {
+        "get_wifi_settings": {
+          "method": "GET",
+          "url": "/wifi",
+          "security_level": 1,
+          "description": "Retrieve current WiFi access point configuration from device",
+          "function": "Returns the current WiFi AP settings including network parameters, security configuration, and operational status. Used for configuration verification and troubleshooting.",
+          "request": {
+            "headers": {
+              "Authorization": "Basic [base64(username:password)]"
+            },
+            "body": null,
+            "parameters": "None required"
+          },
+          "response": {
+            "content_type": "application/json",
+            "http_status_codes": [200, 401, 403, 500],
+            "success": {
+              "http_status": 200,
+              "body": {
+                "ssid": {
+                  "type": "string",
+                  "description": "Access Point SSID that device broadcasts",
+                  "validation": {
+                    "max_length": 32,
+                    "encoding": "UTF-8"
+                  },
+                  "example": "UAS-WAND_Device01"
+                },
+                "channel": {
+                  "type": "uint8",
+                  "description": "WiFi channel number",
+                  "validation": {
+                    "range": "1-13",
+                    "notes": "Channel availability depends on country code"
+                  },
+                  "example": 6
+                },
+                "ssid_hidden": {
+                  "type": "boolean",
+                  "description": "Whether SSID is hidden from network scans",
+                  "default": false,
+                  "example": false
+                },
+                "mac": {
+                  "type": "string",
+                  "description": "Device MAC address",
+                  "validation": {
+                    "format": "XX:XX:XX:XX:XX:XX (hexadecimal)",
+                    "case": "uppercase"
+                  },
+                  "example": "AB:CD:EF:12:34:56"
+                },
+                "timeout": {
+                  "type": "uint16",
+                  "description": "Client disconnect timeout in seconds",
+                  "validation": {
+                    "range": "10-65535",
+                    "recommended_min": 30,
+                    "default": 300
+                  },
+                  "example": 300,
+                  "units": "seconds"
+                },
+                "country": {
+                  "type": "string",
+                  "description": "2-character country code for regulatory compliance",
+                  "validation": {
+                    "length": 2,
+                    "format": "ISO country codes or '01' for world-safe",
+                    "default": "01"
+                  },
+                  "example": "US"
+                },
+                "long_range": {
+                  "type": "boolean",
+                  "description": "Whether ESP Long Range mode is enabled",
+                  "notes": "Enables extended range at cost of data rate",
+                  "example": true
+                }
+              }
+            },
+            "errors": {
+              "unauthorized": {
+                "http_status": 401,
+                "description": "Invalid credentials"
+              },
+              "forbidden": {
+                "http_status": 403,
+                "description": "Level 1 authentication required"
+              },
+              "internal_error": {
+                "http_status": 500,
+                "description": "WiFi configuration data unavailable"
+              }
+            }
+          },
+          "security_notes": {
+            "passphrase_omitted": "WiFi passphrase never included in response for security",
+            "read_only": "This endpoint only retrieves settings, cannot modify"
+          },
+          "prerequisites": [
+            "Level 1 authentication required",
+            "WiFi subsystem must be initialized"
+          ],
+          "side_effects": ["None - read-only operation"],
+          "usage_example": {
+            "description": "Get current WiFi configuration",
+            "curl_command": "curl -X GET 'https://device-ip/wifi' -H 'Authorization: Basic dXNlcjpwaW4='",
+            "success_response": "{\"ssid\": \"UAS-WAND_Device01\", \"channel\": 6, \"ssid_hidden\": false, \"mac\": \"AB:CD:EF:12:34:56\", \"timeout\": 300, \"country\": \"US\", \"long_range\": true}"
+          }
+        },
+        "set_wifi_settings": {
+          "method": "POST", 
+          "url": "/wifi",
+          "security_level": 1,
+          "description": "Configure WiFi settings",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "ssid": "string (32 chars max, optional)",
+              "passphrase": "string (8-64 chars, optional)",
+              "channel": "uint8 (1-13, optional)",
+              "ssid_hidden": "boolean (optional)",
+              "timeout": "uint16 (10-65535, optional)",
+              "country": "string (2-char code, optional)",
+              "long_range": "boolean (optional)",
+              "action": "uint8 (0=save only, 1=save and restart, optional)"
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            },
+            "errors": {
+              "responseCode_1": {
+                "responseCode": 1,
+                "message": "An error occurred setting Wi-Fi settings"
+              }
+            }
+          },
+          "valid_countries": [
+            "01", "AT", "AU", "BE", "BG", "BR", "CA", "CH", "CN", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HK", "HR", "HU", "IE", "IN", "IS", "IT", "JP", "KR", "LI", "LT", "LU", "LV", "MT", "MX", "NL", "NO", "NZ", "PL", "PT", "RO", "SE", "SI", "SK", "TW", "US"
+          ],
+          "notes": "Restart required for changes to take effect unless action=1"
+        },
+        "restart_wifi": {
+          "method": "POST",
+          "url": "/wifi",
+          "security_level": 1,
+          "description": "Restart WiFi service",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "action": 1
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            }
+          },
+          "notes": "WiFi service restarts after response is sent"
+        }
+      },
+      "authentication": {
+        "request_challenge": {
+          "method": "GET",
+          "url": "/auth",
+          "security_level": 0,
+          "description": "Request authentication challenge from UWM",
+          "request": {
+            "body": null
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": {
+              "challenge": "string (hex representation of 32 bytes)"
+            }
+          },
+          "notes": "Follow with Send Challenge Response"
+        },
+        "send_challenge_response": {
+          "method": "POST",
+          "url": "/auth",
+          "security_level": 0,
+          "description": "Send response to authentication challenge",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "response": "string (hex representation of 32 bytes)"
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "success": {
+              "responseCode": 0,
+              "message": "OK"
+            }
+          },
+          "notes": "Elevates security level upon success"
+        },
+        "send_challenge": {
+          "method": "POST",
+          "url": "/auth",
+          "security_level": 0,
+          "description": "Send challenge to UWM for verification",
+          "request": {
+            "content_type": "application/json",
+            "body": {
+              "challenge": "string (hex representation of 32 bytes)"
+            }
+          },
+          "response": {
+            "content_type": "application/json",
+            "format": {
+              "response": "string (hex representation of 32 bytes)"
+            }
+          },
+          "notes": "Used to verify UWM authenticity"
+        }
+      },
+      "deprecated": {
+        "transparent_serial": {
+          "method": "PUT",
+          "url": "/serial",
+          "security_level": "variable",
+          "description": "DEPRECATED - Send serial commands via WiFi",
+          "request": {
+            "content_type": "application/octet-stream",
+            "body": "byte array"
+          },
+          "response": {
+            "content_type": "application/octet-stream",
+            "format": "byte array from serial response"
+          },
+          "notes": "DEPRECATED due to encrypted serial traffic. Expected to be removed."
+        }
+      }
+    },
+    "usage_patterns": {
+      "device_discovery": {
+        "description": "Discover UAS-WAND devices on network",
+        "steps": [
+          "Scan network subnets for devices with 'UAS-WAND' prefix",
+          "Test connection on known ports (80, 443, 8080, etc.)",
+          "Verify device identity with GET /info"
+        ]
+      },
+      "basic_operation": {
+        "description": "Standard measurement workflow",
+        "steps": [
+          "GET /info - verify device information",
+          "POST /auth (optional) - authenticate if level 1 required",
+          "POST /scan with scan:1 - start scanning",
+          "GET /scan - monitor scan status",
+          "GET /live - retrieve live data during scan",
+          "POST /scan with scan:0 - stop scanning",
+          "GET /measurement - retrieve final measurement",
+          "GET /ping - periodic keepalive"
+        ]
+      },
+      "error_handling": {
+        "description": "Error diagnosis workflow",
+        "steps": [
+          "Check HTTP status codes first",
+          "Examine responseCode in JSON responses", 
+          "Use GET /scanerror for scan-specific errors",
+          "Use GET /error for system-wide error bitfields"
+        ]
+      },
+      "wifi_configuration": {
+        "description": "WiFi setup workflow",
+        "steps": [
+          "GET /wifi - check current settings",
+          "POST /wifi with new settings and action:1 - configure and restart",
+          "Wait for WiFi service restart",
+          "Reconnect and verify new settings"
+        ]
+      }
+    },
+    "data_types_and_validation": {
+      "http_standards": {
+        "methods": ["GET", "POST", "PUT"],
+        "content_types": ["application/json", "application/octet-stream"],
+        "authentication": "HTTP Basic Authentication",
+        "encoding": "UTF-8 for JSON, binary for octet-stream"
+      },
+      "json_data_types": {
+        "integer": {
+          "description": "32-bit signed integer",
+          "range": "-2147483648 to 2147483647",
+          "validation": "Must be valid JSON number without decimals"
+        },
+        "string": {
+          "description": "UTF-8 encoded string",
+          "validation": "Must be valid JSON string with proper escaping",
+          "length_limits": "Specified per field"
+        },
+        "boolean": {
+          "description": "JSON boolean type",
+          "values": [true, false],
+          "validation": "Must be lowercase true or false"
+        }
+      },
+      "binary_data_types": {
+        "uint8": {
+          "size": 1,
+          "range": "0 to 255",
+          "description": "Unsigned 8-bit integer"
+        },
+        "uint16": {
+          "size": 2,
+          "range": "0 to 65535",
+          "endianness": "little-endian",
+          "description": "Unsigned 16-bit integer"
+        },
+        "uint32": {
+          "size": 4,
+          "range": "0 to 4294967295",
+          "endianness": "little-endian",
+          "description": "Unsigned 32-bit integer"
+        },
+        "float32": {
+          "size": 4,
+          "format": "IEEE 754 single precision",
+          "endianness": "little-endian",
+          "description": "32-bit floating point number"
+        },
+        "byte_array": {
+          "description": "Sequence of bytes",
+          "validation": "Fixed or variable length as specified"
+        }
+      },
+      "request_validation": {
+        "json_validation": {
+          "syntax": "Must be valid JSON format",
+          "required_fields": "All required fields must be present",
+          "type_checking": "Field types must match specifications",
+          "range_checking": "Numeric values must be within valid ranges"
+        },
+        "authentication_validation": {
+          "header_required": "Authorization header mandatory for all endpoints",
+          "format": "Basic [base64(username:password)]",
+          "credentials": "Username and PIN from device user list",
+          "session_management": "Security level maintained per session"
+        },
+        "query_parameter_validation": {
+          "url_encoding": "Parameters must be properly URL-encoded",
+          "type_conversion": "String parameters converted to appropriate types",
+          "range_checking": "Numeric parameters validated against ranges",
+          "dependency_checking": "Related parameters validated together"
+        }
+      },
+      "response_validation": {
+        "http_status_validation": {
+          "success_codes": [200],
+          "client_error_codes": [400, 401, 403, 404],
+          "server_error_codes": [500],
+          "interpretation": "Status codes indicate request processing result"
+        },
+        "json_response_validation": {
+          "structure": "All JSON responses follow consistent structure",
+          "responseCode": "0 = success, >0 = error condition",
+          "message": "Human-readable status description",
+          "data_fields": "Additional fields as specified per endpoint"
+        },
+        "binary_response_validation": {
+          "content_type": "application/octet-stream",
+          "structure_version": "First field indicates data structure version",
+          "endianness": "All multi-byte values are little-endian",
+          "alignment": "No padding between fields",
+          "size_validation": "Response size must match expected structure size"
+        }
+      },
+      "field_specific_validation": {
+        "ssid": {
+          "type": "string",
+          "max_length": 32,
+          "encoding": "UTF-8",
+          "restrictions": "No control characters"
+        },
+        "passphrase": {
+          "type": "string",
+          "min_length": 8,
+          "max_length": 64,
+          "requirements": "WPA2 passphrase requirements"
+        },
+        "channel": {
+          "type": "integer",
+          "range": "1-13",
+          "dependency": "Valid channels depend on country code"
+        },
+        "mac_address": {
+          "type": "string",
+          "format": "XX:XX:XX:XX:XX:XX",
+          "case": "uppercase hexadecimal",
+          "validation": "Valid MAC address format"
+        },
+        "country_code": {
+          "type": "string",
+          "length": 2,
+          "valid_values": "ISO country codes plus '01' for world-safe"
+        },
+        "timeout": {
+          "type": "integer",
+          "min": 10,
+          "max": 65535,
+          "recommended_min": 30,
+          "units": "seconds"
+        }
+      }
+    },
+    "implementation_guidelines": {
+      "connection_management": {
+        "protocol": "HTTPS (TLS 1.2 or higher)",
+        "port_discovery": "Try ports [80, 443, 8080, 8443, 5000, 5001, 7000, 7001]",
+        "timeout": "30 seconds for HTTP requests",
+        "keep_alive": "Use HTTP keep-alive for connection reuse"
+      },
+      "device_discovery": {
+        "network_scanning": "Scan same subnet as client device",
+        "identification": "Look for devices with 'UAS-WAND' prefix in device name",
+        "verification": "Use GET /info to confirm device identity",
+        "caching": "Cache discovered devices to avoid repeated scans"
+      },
+      "error_handling": {
+        "http_errors": {
+          "400": "Check request format and parameter validity",
+          "401": "Verify authentication credentials",
+          "403": "Perform required authentication challenge",
+          "404": "Check URL and HTTP method",
+          "500": "Device error - check device status"
+        },
+        "api_errors": {
+          "responseCode_1": "Check specific error conditions per endpoint",
+          "responseCode_2": "Use error-specific endpoints for details"
+        },
+        "retry_strategy": {
+          "transient_errors": "Retry 3 times with exponential backoff",
+          "authentication_errors": "Re-authenticate and retry",
+          "device_busy": "Wait and retry with longer intervals"
+        }
+      },
+      "security_considerations": {
+        "certificate_validation": "Validate TLS certificates in production",
+        "credential_storage": "Store credentials securely",
+        "session_management": "Track authentication levels per session",
+        "challenge_response": "Implement proper challenge/response for Level 1"
+      },
+      "performance_optimization": {
+        "data_compression": "Use gzip compression for large responses",
+        "partial_data": "Use query parameters to limit data transfer",
+        "caching": "Cache device information and configuration",
+        "concurrent_requests": "Limit concurrent requests to avoid overwhelming device"
+      },
+      "best_practices": {
+        "workflow": [
+          "1. Discover device and verify identity",
+          "2. Authenticate if required operations need Level 1",
+          "3. Check scan status before starting operations",
+          "4. Use appropriate error handling for each operation",
+          "5. Send periodic keep-alive during long operations"
+        ],
+        "bandwidth_management": [
+          "Use header-only requests when full data not needed",
+          "Implement progressive data loading for large datasets",
+          "Consider long-range mode limitations for data transfer"
+        ]
+      }
+    }
+  }
+}

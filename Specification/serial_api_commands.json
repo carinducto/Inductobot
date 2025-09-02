@@ -1,0 +1,992 @@
+{
+  "serial_api_specification": {
+    "document": "INDU0238-Serial-API-Rev17",
+    "version": "Rev 17",
+    "date": "April 15, 2025",
+    "description": "Inductosense Wand V3 Serial API Command Database",
+    "protocol": {
+      "framing": {
+        "magic_byte": "0x49",
+        "structure": "magic_byte + counter + payload_length + payload + crc16",
+        "max_payload": "65535 bytes"
+      },
+      "responses": {
+        "ACK": "0x06",
+        "NACK": "0x21", 
+        "BUSY": "0x15",
+        "NOT_AUTH": "0x3D"
+      },
+      "security_levels": {
+        "0": "No authentication",
+        "1": "Session-based AES encryption",
+        "2": "Highest security with device keys"
+      }
+    },
+    "commands": {
+      "firmware_upgrade": {
+        "category_id": "3.1",
+        "description": "Firmware and boot logo update commands",
+        "commands": {
+          "0x01": {
+            "name": "Start Firmware Upgrade",
+            "command_id": "0x01",
+            "security_level": 1,
+            "description": "Initiates firmware upgrade process on device. Must be followed by Send Firmware Block commands.",
+            "function": "Prepares device for receiving firmware data and validates firmware size and checksum before starting transfer.",
+            "parameters": {
+              "firmware_size": {
+                "type": "uint32_le",
+                "description": "Total size of firmware in bytes",
+                "validation": {
+                  "min": 1,
+                  "max": 41943040,
+                  "notes": "Maximum firmware size is ~40MB"
+                }
+              },
+              "firmware_crc": {
+                "type": "uint32_le",
+                "description": "CRC32 checksum of entire firmware for validation",
+                "validation": "CRC32 algorithm used for integrity checking"
+              }
+            },
+            "response": {
+              "success": {
+                "format": "ACK (0x06)",
+                "description": "Device ready to receive firmware blocks"
+              },
+              "error": {
+                "format": "NACK (0x21) + error_code",
+                "description": "Firmware upgrade cannot start"
+              }
+            },
+            "errors": {
+              "0x01": "Firmware too large for device storage",
+              "0x02": "Insufficient flash memory space available",
+              "0x03": "Firmware upgrade already in progress"
+            },
+            "prerequisites": ["Level 1 authentication required"],
+            "side_effects": ["Device enters firmware upgrade mode", "All other operations blocked"],
+            "usage_example": {
+              "description": "Start upgrade for 1MB firmware",
+              "command_bytes": "49 03 09 00 01 00 10 00 00 AB CD EF 12 [CRC16]",
+              "success_response": "06",
+              "error_response": "21 01 (firmware too large)"
+            }
+          },
+          "0x02": {
+            "name": "Send Firmware Block",
+            "security_level": 1,
+            "parameters": {
+              "block_number": "uint16_le",
+              "block_data": "bytes[1024]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x03": {
+            "name": "Finish Firmware Upgrade",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x04": {
+            "name": "Abort Firmware Upgrade",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK"
+            }
+          },
+          "0x05": {
+            "name": "Start Boot Logo Upload",
+            "security_level": 1,
+            "parameters": {
+              "logo_size": "uint32_le"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x06": {
+            "name": "Send Boot Logo Block",
+            "security_level": 1,
+            "parameters": {
+              "block_data": "bytes[512]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x07": {
+            "name": "Finish Boot Logo Upload",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x08": {
+            "name": "Abort Boot Logo Upload",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK"
+            }
+          },
+          "0x09": {
+            "name": "Get Firmware Version",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + version_string",
+              "format": "null-terminated string"
+            }
+          }
+        }
+      },
+      "rfid": {
+        "category_id": "3.2",
+        "description": "RFID module control and configuration",
+        "commands": {
+          "0x10": {
+            "name": "Power On RFID",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x11": {
+            "name": "Power Off RFID",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK"
+            }
+          },
+          "0x12": {
+            "name": "Get RFID Status",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + status_byte",
+              "status_values": {
+                "0x00": "Powered off",
+                "0x01": "Powered on",
+                "0x02": "Error"
+              }
+            }
+          },
+          "0x13": {
+            "name": "Set RFID Power Level",
+            "security_level": 0,
+            "parameters": {
+              "power_level": "uint8 (0-31)"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x14": {
+            "name": "Get RFID Power Level",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + power_level",
+              "format": "uint8 (0-31)"
+            }
+          },
+          "0x15": {
+            "name": "Set RFID Region",
+            "security_level": 0,
+            "parameters": {
+              "region": "uint8"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            },
+            "regions": {
+              "0x00": "FCC (North America)",
+              "0x01": "ETSI (Europe)",
+              "0x02": "Japan"
+            }
+          },
+          "0x16": {
+            "name": "Get RFID Region",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + region",
+              "format": "uint8 (see regions)"
+            }
+          },
+          "0x17": {
+            "name": "Start RFID Inventory",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x18": {
+            "name": "Stop RFID Inventory",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK"
+            }
+          },
+          "0x19": {
+            "name": "Get RFID Inventory Results",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + tag_count + tag_data",
+              "format": "uint16_le + (epc_length + epc_data + rssi)[]"
+            }
+          },
+          "0x1A": {
+            "name": "Read RFID Tag",
+            "security_level": 0,
+            "parameters": {
+              "epc_length": "uint8",
+              "epc_data": "bytes[epc_length]",
+              "memory_bank": "uint8",
+              "start_address": "uint16_le",
+              "word_count": "uint16_le"
+            },
+            "response": {
+              "success": "ACK + data_length + data",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x1B": {
+            "name": "Write RFID Tag",
+            "security_level": 1,
+            "parameters": {
+              "epc_length": "uint8",
+              "epc_data": "bytes[epc_length]",
+              "memory_bank": "uint8",
+              "start_address": "uint16_le",
+              "data_length": "uint16_le",
+              "data": "bytes[data_length]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x1C": {
+            "name": "Lock RFID Tag",
+            "security_level": 1,
+            "parameters": {
+              "epc_length": "uint8",
+              "epc_data": "bytes[epc_length]",
+              "lock_payload": "uint16_le",
+              "lock_action": "uint16_le"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x1D": {
+            "name": "Kill RFID Tag",
+            "security_level": 2,
+            "parameters": {
+              "epc_length": "uint8",
+              "epc_data": "bytes[epc_length]",
+              "kill_password": "uint32_le"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x1E": {
+            "name": "Set RFID Antenna Configuration",
+            "security_level": 0,
+            "parameters": {
+              "antenna_mask": "uint8"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x1F": {
+            "name": "Get RFID Antenna Configuration",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + antenna_mask",
+              "format": "uint8"
+            }
+          }
+        }
+      },
+      "dynamic_tables": {
+        "category_id": "3.3",
+        "description": "Sensor location and database management",
+        "commands": {
+          "0x20": {
+            "name": "Get Dynamic Tables Info",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + table_count + table_info",
+              "format": "uint16_le + (table_id + entry_count + entry_size)[]"
+            }
+          },
+          "0x21": {
+            "name": "Read Dynamic Table Entry",
+            "security_level": 0,
+            "parameters": {
+              "table_id": "uint16_le",
+              "entry_index": "uint16_le"
+            },
+            "response": {
+              "success": "ACK + entry_data",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x22": {
+            "name": "Write Dynamic Table Entry",
+            "security_level": 1,
+            "parameters": {
+              "table_id": "uint16_le",
+              "entry_index": "uint16_le",
+              "entry_data": "bytes[variable]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x23": {
+            "name": "Clear Dynamic Table",
+            "security_level": 1,
+            "parameters": {
+              "table_id": "uint16_le"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x24": {
+            "name": "Backup Dynamic Tables",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK + backup_size + backup_data",
+              "error": "NACK + error_code"
+            }
+          }
+        }
+      },
+      "authentication": {
+        "category_id": "3.4",
+        "description": "Security handshakes and session management",
+        "commands": {
+          "0x30": {
+            "name": "Start Authentication",
+            "security_level": 0,
+            "parameters": {
+              "auth_level": "uint8 (1 or 2)"
+            },
+            "response": {
+              "success": "ACK + challenge",
+              "error": "NACK + error_code",
+              "format": "bytes[16] for level 1, bytes[32] for level 2"
+            }
+          },
+          "0x31": {
+            "name": "Send Authentication Response",
+            "security_level": 0,
+            "parameters": {
+              "response_data": "bytes[16 or 32]"
+            },
+            "response": {
+              "success": "ACK + session_key",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x32": {
+            "name": "End Authentication Session",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK"
+            }
+          },
+          "0x33": {
+            "name": "Get Authentication Status",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + status",
+              "status_values": {
+                "0x00": "Not authenticated",
+                "0x01": "Level 1 authenticated",
+                "0x02": "Level 2 authenticated"
+              }
+            }
+          },
+          "0x34": {
+            "name": "Set Session Timeout",
+            "security_level": 1,
+            "parameters": {
+              "timeout_seconds": "uint32_le"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x35": {
+            "name": "Get Session Timeout",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + timeout_seconds",
+              "format": "uint32_le"
+            }
+          },
+          "0x36": {
+            "name": "Refresh Session",
+            "security_level": 1,
+            "parameters": {},
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x37": {
+            "name": "Get Device Certificate",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + cert_length + certificate",
+              "error": "NACK + error_code"
+            }
+          },
+          "0x38": {
+            "name": "Verify Device Signature",
+            "security_level": 0,
+            "parameters": {
+              "data_length": "uint16_le",
+              "data": "bytes[data_length]",
+              "signature": "bytes[64]"
+            },
+            "response": {
+              "success": "ACK + verification_result",
+              "values": {
+                "0x00": "Invalid signature",
+                "0x01": "Valid signature"
+              }
+            }
+          }
+        }
+      },
+      "miscellaneous": {
+        "category_id": "3.5",
+        "description": "Utility commands",
+        "commands": {
+          "0x40": {
+            "name": "Keep Alive",
+            "command_id": "0x40",
+            "security_level": 0,
+            "description": "Heartbeat command to maintain active connection and session state.",
+            "function": "Prevents communication timeouts and maintains authentication session. Should be sent periodically during idle periods.",
+            "parameters": {},
+            "parameter_validation": "No parameters required",
+            "response": {
+              "success": {
+                "format": "ACK (0x06)",
+                "description": "Device is alive and responsive",
+                "guaranteed": true
+              }
+            },
+            "timing": {
+              "recommended_interval": "30 seconds during idle",
+              "max_interval": "300 seconds before session timeout",
+              "response_time": "<100ms typical"
+            },
+            "prerequisites": ["None - always available"],
+            "side_effects": ["Resets session timeout counter", "Maintains authentication state"],
+            "usage_example": {
+              "description": "Send periodic heartbeat",
+              "command_bytes": "49 01 01 00 40 [CRC16]",
+              "success_response": "06",
+              "notes": "Always succeeds unless communication failure"
+            }
+          },
+          "0x41": {
+            "name": "Get Device Information",
+            "command_id": "0x41",
+            "security_level": 0,
+            "description": "Retrieves comprehensive device identification and status information.",
+            "function": "Returns device serial number, firmware versions, hardware details, and calibration status for identification and compatibility checking.",
+            "parameters": {},
+            "parameter_validation": "No parameters required",
+            "response": {
+              "success": {
+                "format": "ACK (0x06) + device_info_structure",
+                "description": "Device information successfully retrieved",
+                "structure": {
+                  "serial_number": {
+                    "type": "bytes[16]",
+                    "description": "Unique device serial number",
+                    "format": "ASCII string, null-terminated",
+                    "example": "WV3-001234-56789"
+                  },
+                  "firmware_version": {
+                    "type": "bytes[16]",
+                    "description": "Current firmware version string",
+                    "format": "ASCII string, null-terminated",
+                    "example": "3.9.2-AuthSub"
+                  },
+                  "hardware_version": {
+                    "type": "bytes[8]",
+                    "description": "Hardware revision identifier",
+                    "format": "ASCII string, null-terminated",
+                    "example": "Rev-C"
+                  },
+                  "manufacture_date": {
+                    "type": "uint32_le",
+                    "description": "Manufacturing date",
+                    "format": "Unix timestamp (seconds since 1970-01-01)",
+                    "validation": "Valid timestamp range"
+                  },
+                  "calibration_date": {
+                    "type": "uint32_le",
+                    "description": "Last calibration date",
+                    "format": "Unix timestamp (seconds since 1970-01-01)",
+                    "validation": "Should be after manufacture_date"
+                  }
+                },
+                "total_size": "52 bytes"
+              },
+              "error": {
+                "format": "NACK (0x21) + error_code",
+                "description": "Device information unavailable",
+                "rare": "Usually always available"
+              }
+            },
+            "prerequisites": ["None - always available"],
+            "side_effects": ["None"],
+            "usage_example": {
+              "description": "Get device identification",
+              "command_bytes": "49 02 01 00 41 [CRC16]",
+              "success_response": "06 [52 bytes of device info]",
+              "notes": "First command typically sent to identify device"
+            }
+          },
+          "0x42": {
+            "name": "Get Battery Status",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + battery_info",
+              "format": {
+                "voltage": "uint16_le (mV)",
+                "percentage": "uint8 (0-100)",
+                "charging_state": "uint8",
+                "temperature": "int16_le (0.1°C)"
+              }
+            }
+          },
+          "0x43": {
+            "name": "Reset Device",
+            "security_level": 2,
+            "parameters": {
+              "reset_type": "uint8"
+            },
+            "response": {
+              "success": "ACK (before reset)"
+            },
+            "reset_types": {
+              "0x00": "Soft reset",
+              "0x01": "Factory reset",
+              "0x02": "Calibration reset"
+            }
+          },
+          "0x44": {
+            "name": "Set Device Sleep Mode",
+            "security_level": 0,
+            "parameters": {
+              "sleep_duration": "uint32_le (seconds)"
+            },
+            "response": {
+              "success": "ACK (before sleep)"
+            }
+          }
+        }
+      },
+      "legacy_compatibility": {
+        "category_id": "3.9",
+        "description": "Wand v2 compatibility commands",
+        "commands": {
+          "0x90": {
+            "name": "Get Information (Legacy)",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "JSON response with device information",
+              "format": "JSON string with device details"
+            },
+            "note": "Maintains compatibility with Wand v2 software"
+          },
+          "0x91": {
+            "name": "Do Scan (Legacy)",
+            "security_level": 0,
+            "parameters": {
+              "scan_parameters": "JSON string"
+            },
+            "response": {
+              "success": "JSON response with scan results",
+              "format": "JSON string with measurement data"
+            },
+            "note": "Legacy scanning interface"
+          }
+        }
+      },
+      "provisioning": {
+        "category_id": "3.10",
+        "description": "Device key and serial number provisioning",
+        "commands": {
+          "0xA0": {
+            "name": "Provision Device Key",
+            "security_level": 2,
+            "parameters": {
+              "key_type": "uint8",
+              "key_data": "bytes[32]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            },
+            "key_types": {
+              "0x00": "Primary device key",
+              "0x01": "Secondary device key"
+            }
+          },
+          "0xA1": {
+            "name": "Set Serial Number",
+            "security_level": 2,
+            "parameters": {
+              "serial_number": "bytes[16]"
+            },
+            "response": {
+              "success": "ACK",
+              "error": "NACK + error_code"
+            },
+            "note": "One-time operation, cannot be changed after set"
+          },
+          "0xA2": {
+            "name": "Get Provisioning Status",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + status_flags",
+              "format": "uint8 bitfield",
+              "flags": {
+                "bit 0": "Serial number provisioned",
+                "bit 1": "Primary key provisioned",
+                "bit 2": "Secondary key provisioned",
+                "bit 3": "Device locked"
+              }
+            }
+          }
+        }
+      },
+      "production_test": {
+        "category_id": "3.11",
+        "description": "Hardware testing and validation",
+        "commands": {
+          "0xB0": {
+            "name": "Run Production Test",
+            "security_level": 2,
+            "parameters": {
+              "test_mask": "uint16_le"
+            },
+            "response": {
+              "success": "ACK + test_results",
+              "format": "uint16_le result_mask + detailed_results",
+              "error": "NACK + error_code"
+            },
+            "test_components": {
+              "bit 0": "Power supply",
+              "bit 1": "Crystal oscillator",
+              "bit 2": "Memory",
+              "bit 3": "RFID module",
+              "bit 4": "Sensor interface",
+              "bit 5": "Temperature sensor",
+              "bit 6": "Accelerometer",
+              "bit 7": "Magnetometer",
+              "bit 8": "Gyroscope",
+              "bit 9": "Pressure sensor",
+              "bit 10": "Humidity sensor",
+              "bit 11": "Light sensor",
+              "bit 12": "Audio codec"
+            }
+          },
+          "0xB1": {
+            "name": "Calibrate Sensors",
+            "security_level": 2,
+            "parameters": {
+              "sensor_mask": "uint16_le"
+            },
+            "response": {
+              "success": "ACK + calibration_data",
+              "error": "NACK + error_code"
+            }
+          },
+          "0xB2": {
+            "name": "Get Test Report",
+            "security_level": 0,
+            "parameters": {},
+            "response": {
+              "success": "ACK + report_length + report_data",
+              "format": "JSON test report with detailed results"
+            }
+          }
+        }
+      }
+    },
+    "error_codes": {
+      "general": {
+        "0x00": "Success",
+        "0x01": "Invalid command",
+        "0x02": "Invalid parameters",
+        "0x03": "Command not supported",
+        "0x04": "Device busy",
+        "0x05": "Authentication required",
+        "0x06": "Authentication failed",
+        "0x07": "Session expired",
+        "0x08": "Insufficient privileges",
+        "0x09": "Hardware error",
+        "0x0A": "Memory error",
+        "0x0B": "CRC error",
+        "0x0C": "Timeout",
+        "0x0D": "Buffer overflow",
+        "0x0E": "Device not ready",
+        "0x0F": "Operation failed"
+      },
+      "firmware_upgrade": {
+        "0x10": "Firmware too large",
+        "0x11": "Invalid firmware",
+        "0x12": "Flash write error",
+        "0x13": "Flash erase error",
+        "0x14": "Checksum mismatch"
+      },
+      "rfid": {
+        "0x20": "RFID module not detected",
+        "0x21": "RFID power error",
+        "0x22": "No tags found",
+        "0x23": "Tag communication error",
+        "0x24": "Invalid memory bank",
+        "0x25": "Access denied",
+        "0x26": "Tag locked"
+      }
+    },
+    "data_types": {
+      "primitives": {
+        "uint8": {
+          "size": 1,
+          "range": "0 to 255",
+          "description": "Unsigned 8-bit integer"
+        },
+        "uint16_le": {
+          "size": 2,
+          "range": "0 to 65535",
+          "endianness": "little-endian",
+          "description": "Unsigned 16-bit integer, little-endian byte order"
+        },
+        "uint32_le": {
+          "size": 4,
+          "range": "0 to 4294967295",
+          "endianness": "little-endian",
+          "description": "Unsigned 32-bit integer, little-endian byte order"
+        },
+        "int16_le": {
+          "size": 2,
+          "range": "-32768 to 32767",
+          "endianness": "little-endian",
+          "description": "Signed 16-bit integer, little-endian byte order"
+        },
+        "float32": {
+          "size": 4,
+          "format": "IEEE 754 single precision",
+          "endianness": "little-endian",
+          "description": "32-bit floating point number"
+        },
+        "bytes[n]": {
+          "size": "variable",
+          "description": "Array of n bytes",
+          "notes": "For strings, typically null-terminated"
+        }
+      },
+      "complex_types": {
+        "device_info_structure": {
+          "size": 52,
+          "fields": [
+            {"serial_number": "bytes[16] - Device serial number"},
+            {"firmware_version": "bytes[16] - Firmware version string"},
+            {"hardware_version": "bytes[8] - Hardware revision"},
+            {"manufacture_date": "uint32_le - Unix timestamp"},
+            {"calibration_date": "uint32_le - Unix timestamp"}
+          ]
+        },
+        "battery_info_structure": {
+          "size": 7,
+          "fields": [
+            {"voltage": "uint16_le - Battery voltage in mV"},
+            {"percentage": "uint8 - Battery percentage 0-100"},
+            {"charging_state": "uint8 - Charging status"},
+            {"temperature": "int16_le - Battery temperature in 0.1°C"}
+          ]
+        }
+      }
+    },
+    "validation_rules": {
+      "command_structure": {
+        "magic_byte": {
+          "value": "0x49",
+          "required": true,
+          "validation": "Must always be 0x49 for valid commands"
+        },
+        "counter": {
+          "type": "uint8",
+          "description": "Message counter for sequence tracking",
+          "validation": "Increments with each command, wraps at 255"
+        },
+        "payload_length": {
+          "type": "uint16_le",
+          "range": "0 to 65535",
+          "validation": "Must match actual payload size"
+        },
+        "crc16": {
+          "algorithm": "CRC-16-CCITT",
+          "polynomial": "0x1021",
+          "validation": "Calculated over entire message excluding CRC itself"
+        }
+      },
+      "parameter_validation": {
+        "authentication_levels": {
+          "level_0": "No authentication required",
+          "level_1": "AES-encrypted session required",
+          "level_2": "Device key authentication required"
+        },
+        "common_ranges": {
+          "power_levels": "0-31 for RFID power settings",
+          "regions": "0=FCC, 1=ETSI, 2=Japan",
+          "memory_banks": "0=Reserved, 1=EPC, 2=TID, 3=User",
+          "antenna_mask": "Bitmask for antenna selection"
+        },
+        "string_validation": {
+          "null_termination": "String fields must be null-terminated",
+          "encoding": "ASCII encoding for text fields",
+          "max_lengths": "Respect field size limits"
+        }
+      },
+      "response_validation": {
+        "response_codes": {
+          "ACK": "0x06 - Command executed successfully",
+          "NACK": "0x21 - Command failed, error code follows",
+          "BUSY": "0x15 - Device busy, retry later",
+          "NOT_AUTH": "0x3D - Authentication required"
+        },
+        "error_code_validation": {
+          "format": "Single byte following NACK response",
+          "interpretation": "See error_codes section for meanings"
+        },
+        "data_validation": {
+          "endianness": "All multi-byte integers are little-endian",
+          "alignment": "No special alignment requirements",
+          "null_termination": "String responses are null-terminated"
+        }
+      }
+    },
+    "usage_examples": {
+      "basic_communication": {
+        "keep_alive": {
+          "description": "Simple heartbeat command",
+          "command_bytes": "49 01 01 00 40 [CRC16]",
+          "breakdown": {
+            "magic_byte": "49",
+            "counter": "01",
+            "payload_length": "01 00 (1 byte)",
+            "command_id": "40",
+            "crc16": "Calculated over entire message"
+          },
+          "response": "06 (ACK)"
+        },
+        "get_device_info": {
+          "description": "Retrieve device information",
+          "command_bytes": "49 02 01 00 41 [CRC16]",
+          "response_success": "06 + 52 bytes device info",
+          "response_error": "21 + error_code"
+        }
+      },
+      "firmware_upgrade_sequence": {
+        "step_1_start": {
+          "command": "49 03 09 00 01 [4-byte size] [4-byte crc] [CRC16]",
+          "description": "Start firmware upgrade with size and checksum"
+        },
+        "step_2_blocks": {
+          "command": "49 04 [length] 00 02 [2-byte block#] [1024 bytes data] [CRC16]",
+          "description": "Send firmware blocks sequentially"
+        },
+        "step_3_finish": {
+          "command": "49 05 01 00 03 [CRC16]",
+          "description": "Complete firmware upgrade process"
+        }
+      },
+      "authentication_sequence": {
+        "step_1_start_auth": {
+          "command": "49 06 02 00 30 01 [CRC16]",
+          "description": "Request Level 1 authentication",
+          "response": "06 + 16-byte challenge"
+        },
+        "step_2_send_response": {
+          "command": "49 07 11 00 31 [16-byte response] [CRC16]",
+          "description": "Send computed challenge response",
+          "response": "06 + session_key or 21 + error"
+        }
+      }
+    }
+  },
+  "implementation_guidelines": {
+    "communication_layer": {
+      "transport": "Serial UART communication",
+      "baud_rate": "Typically 115200 bps",
+      "flow_control": "None required",
+      "timeout": "5 seconds for command response"
+    },
+    "error_handling": {
+      "retry_strategy": "Retry up to 3 times on NACK or timeout",
+      "backoff": "Exponential backoff for BUSY responses",
+      "authentication": "Re-authenticate on NOT_AUTH response"
+    },
+    "best_practices": {
+      "command_sequencing": "Wait for response before sending next command",
+      "session_management": "Send Keep Alive every 30 seconds during idle",
+      "firmware_upgrade": "Verify each block acknowledgment before proceeding",
+      "security": "Always validate authentication level before secure operations"
+    }
+  }
+}

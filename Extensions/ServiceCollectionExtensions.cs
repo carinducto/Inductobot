@@ -31,6 +31,9 @@ public static class ServiceCollectionExtensions
         // Discovery Service (parallel to device service)
         services.AddSingleton<IUasWandDiscoveryService, UasWandDiscoveryService>();
         
+        // COM Port Service for USB configuration
+        services.AddSingleton<IUasWandComPortService, UasWandComPortService>();
+        
         // Framework Components
         services.AddTransient<ButtonOperationHandler>();
         services.AddTransient<WiFiSettingsManager>();

@@ -1,4 +1,5 @@
 using Inductobot.Abstractions.Services;
+using Inductobot.Models.Authentication;
 using Inductobot.Models.Commands;
 using Inductobot.Models.Device;
 using Inductobot.Models.Measurements;

@@ -1,4 +1,5 @@
 using Inductobot.Models.Device;
+using Inductobot.Models.Discovery;
 
 namespace Inductobot.Abstractions.Services;
 
@@ -31,6 +32,11 @@ public interface IUasWandDiscoveryService
     /// Scanning state changed event
     /// </summary>
     event EventHandler<bool>? ScanningStateChanged;
+    
+    /// <summary>
+    /// Scan progress changed event
+    /// </summary>
+    event EventHandler<ScanProgress>? ScanProgressChanged;
     
     /// <summary>
     /// Start scanning for UAS-WAND devices
